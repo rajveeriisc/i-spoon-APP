@@ -1,0 +1,20 @@
+﻿# Node / Backend
+**/node_modules/
+**/uploads/
+**/uploads/avatars/
+
+# Flutter / Dart
+smartspoon/.dart_tool/
+smartspoon/build/
+smartspoon/ios/Flutter/ephemeral/
+smartspoon/.idea/
+smartspoon/.vscode/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.iml
+
+# Env files
+.env
+ispoon-backend/.env
