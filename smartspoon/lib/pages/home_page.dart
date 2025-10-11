@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/main.dart';
 import 'package:smartspoon/pages/add_device_screen.dart';
+import 'package:smartspoon/features/insights/application/insights_controller.dart';
+import 'package:smartspoon/features/insights/infrastructure/mock_insights_repository.dart';
+import 'package:smartspoon/features/insights/presentation/insights_dashboard.dart';
 import 'package:smartspoon/pages/profile_page.dart';
 import 'package:smartspoon/state/user_provider.dart';
 
@@ -31,9 +34,10 @@ class _HomePageState extends State<HomePage> {
       case 0:
         return const HomeContent();
       case 1:
-        return const Center(
-          child: Text('Insights Page'),
-        ); // Placeholder for Insights
+        return ChangeNotifierProvider(
+          create: (_) => InsightsController(MockInsightsRepository())..init(),
+          child: const InsightsDashboard(),
+        );
       case 2:
         return const ProfilePage();
       default:

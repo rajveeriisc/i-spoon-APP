@@ -60,7 +60,11 @@ class ProfileListItem extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10.0),
       child: onTap != null && !isToggle
-          ? InkWell(onTap: onTap, child: row)
+          ? GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: row,
+            )
           : row,
     );
   }

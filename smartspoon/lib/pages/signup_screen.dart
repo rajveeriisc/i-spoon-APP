@@ -109,7 +109,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   context,
                 ).size.height, // Ensure full height
               ),
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               child: Form(
                 key: _formKey,
                 child: AutofillGroup(

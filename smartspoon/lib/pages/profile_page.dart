@@ -8,10 +8,12 @@ import 'package:provider/provider.dart';
 import 'package:smartspoon/state/user_provider.dart';
 import 'package:smartspoon/main.dart';
 import 'package:smartspoon/pages/terms_page.dart';
-import 'package:smartspoon/ui/widgets/network_avatar.dart';
+import 'package:smartspoon/features/core/widgets/network_avatar.dart';
 import 'package:smartspoon/features/profile/widgets/profile_section_card.dart';
 import 'package:smartspoon/features/profile/widgets/profile_list_item.dart';
 import 'package:smartspoon/features/profile/widgets/user_info_card.dart';
+import 'package:smartspoon/features/profile/widgets/faq_section_card.dart';
+import 'package:smartspoon/features/profile/widgets/faq_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -36,6 +38,8 @@ class ProfilePage extends StatelessWidget {
           const AppSettingsCard(),
           const SizedBox(height: 30),
           const HelpSupportCard(),
+          const SizedBox(height: 30),
+          const FaqSectionCard(),
           const SizedBox(height: 30),
           const AppInfoCard(),
           const SizedBox(height: 30),
@@ -343,9 +347,10 @@ class HelpSupportCard extends StatelessWidget {
           title: 'FAQ',
           value: '',
           onTap: () {
-            ScaffoldMessenger.of(
+            debugPrint('FAQ tapped - navigating to FaqPage');
+            Navigator.of(
               context,
-            ).showSnackBar(const SnackBar(content: Text('FAQ coming soon')));
+            ).push(MaterialPageRoute(builder: (_) => const FaqPage()));
           },
         ),
         ProfileListItem(

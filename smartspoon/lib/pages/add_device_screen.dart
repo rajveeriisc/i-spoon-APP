@@ -377,7 +377,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
     // final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       appBar: AppBar(
         automaticallyImplyLeading: true,
         leading: const BackButton(),
@@ -416,10 +416,12 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                 ..._scanResults.map((result) {
                   final device = result.device;
                   final isConnected = _isDeviceConnected(device);
-                  if (_filterIndex == 2 && !isConnected)
+                  if (_filterIndex == 2 && !isConnected) {
                     return const SizedBox.shrink();
-                  if (_filterIndex == 1 && isConnected)
+                  }
+                  if (_filterIndex == 1 && isConnected) {
                     return const SizedBox.shrink();
+                  }
                   return _ModernDeviceCard(
                     name: device.platformName.isNotEmpty
                         ? device.platformName
@@ -520,18 +522,18 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   // _buildStatusChips removed per request; Scan button covers the state
 
   Widget _buildFilterChips(BuildContext context) {
-    InputChip _filter(String label, int idx) => InputChip(
+    InputChip filter(String label, int idx) => InputChip(
       label: Text(label),
       selected: _filterIndex == idx,
       onSelected: (_) => setState(() => _filterIndex = idx),
     );
     return Row(
       children: [
-        _filter('All', 0),
+        filter('All', 0),
         const SizedBox(width: 8),
-        _filter('Nearby', 1),
+        filter('Nearby', 1),
         const SizedBox(width: 8),
-        _filter('Connected', 2),
+        filter('Connected', 2),
       ],
     );
   }

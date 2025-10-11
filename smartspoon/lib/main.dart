@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:smartspoon/pages/splash_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/state/user_provider.dart';
-import 'package:smartspoon/ui/theme/app_theme.dart';
+import 'package:smartspoon/features/core/theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

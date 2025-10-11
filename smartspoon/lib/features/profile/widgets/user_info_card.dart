@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:smartspoon/services/auth_service.dart';
 import 'package:smartspoon/state/user_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:smartspoon/ui/widgets/network_avatar.dart';
+import 'package:smartspoon/features/core/widgets/network_avatar.dart';
 
 class ProfileUserInfoCard extends StatelessWidget {
   const ProfileUserInfoCard({super.key, required this.onEditProfile});
