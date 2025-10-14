@@ -97,6 +97,57 @@ class AuthService {
     throw AuthException(_extractErrorMessage(data));
   }
 
+  // Social login (Google, etc.)
+  static Future<Map<String, dynamic>> socialLogin({
+    required String provider,
+    required String email,
+    required String name,
+    required String firebaseUid,
+    String? avatarUrl,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/auth/social');
+    final resp = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'provider': provider,
+        'email': email,
+        'name': name,
+        'firebase_uid': firebaseUid,
+        'avatar_url': avatarUrl,
+      }),
+    );
+    final data = _decodeBody(resp.body);
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      if (data.containsKey('token')) {
+        await _setItem('auth_token', data['token'] as String);
+      }
+      return data;
+    }
+    throw AuthException(_extractErrorMessage(data));
+  }
+
+  // Verify Firebase ID token with backend and receive backend JWT
+  static Future<Map<String, dynamic>> verifyFirebaseToken({
+    required String idToken,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/auth/firebase/verify');
+    final resp = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'idToken': idToken}),
+    );
+    final data = _decodeBody(resp.body);
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      final token = data['token'] as String?;
+      if (token != null) {
+        await _setItem('auth_token', token);
+      }
+      return data;
+    }
+    throw AuthException(_extractErrorMessage(data));
+  }
+
   static Future<void> logout() async {
     // nothing server-side to clear
     await _removeItem('auth_token');

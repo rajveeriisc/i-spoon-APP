@@ -5,6 +5,7 @@ import 'package:smartspoon/pages/home_page.dart';
 import 'package:smartspoon/validators.dart';
 import 'package:smartspoon/services/auth_service.dart';
 import 'package:provider/provider.dart';
+import 'package:smartspoon/services/firebase_auth_service.dart';
 import 'package:smartspoon/state/user_provider.dart';
 
 // SignUpScreen widget provides a form for users to create a new account
@@ -51,28 +52,48 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final name = _nameController.text.trim();
-      await AuthService.signup(
+
+      final fb = FirebaseAuthService();
+      final result = await fb.signUpWithEmail(
         email: email,
         password: password,
-        name: name.isNotEmpty ? name : null,
+        name: name.isNotEmpty ? name : email.split('@').first,
       );
-      // Auto-login after successful signup
-      await AuthService.login(email: email, password: password);
-      try {
-        final me = await AuthService.getMe();
+
+      if (result['success'] == true) {
+        // If email not verified yet, show notice and skip backend verification
+        if (result['emailVerified'] == false) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Verification email sent. Please verify your email, then log in.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        final idToken = result['token'] as String;
+        await AuthService.verifyFirebaseToken(idToken: idToken);
+        try {
+          final me = await AuthService.getMe();
+          if (!mounted) return;
+          Provider.of<UserProvider>(
+            context,
+            listen: false,
+          ).setFromMap((me['user'] as Map<String, dynamic>));
+        } catch (_) {}
         if (!mounted) return;
-        Provider.of<UserProvider>(
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Signup successful. Welcome!')),
+        );
+        Navigator.of(
           context,
-          listen: false,
-        ).setFromMap((me['user'] as Map<String, dynamic>));
-      } catch (_) {}
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signup successful. Welcome!')),
-      );
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
+        ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
+      } else {
+        throw AuthException(result['message'] as String? ?? 'Signup failed');
+      }
     } on AuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

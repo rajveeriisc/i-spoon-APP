@@ -3,9 +3,12 @@ import 'package:smartspoon/pages/splash_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/state/user_provider.dart';
 import 'package:smartspoon/features/core/theme/app_theme.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(
     MultiProvider(
       providers: [

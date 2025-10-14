@@ -12,7 +12,7 @@ dotenv.config();
 const app = express();
 
 // Simple CORS: allow all origins, no credentials
-app.use(helmet());
+app.use(helmet({ crossOriginOpenerPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors());
 app.options("*", cors());
 

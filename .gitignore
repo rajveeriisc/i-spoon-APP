@@ -1,20 +1,23 @@
-﻿# Node / Backend
-**/node_modules/
-**/uploads/
-**/uploads/avatars/
+﻿# Node & Flutter
+node_modules/
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+build/
 
-# Flutter / Dart
-smartspoon/.dart_tool/
-smartspoon/build/
-smartspoon/ios/Flutter/ephemeral/
-smartspoon/.idea/
-smartspoon/.vscode/
-
-# OS/editor
+# IDE
+.vscode/
+.idea/
 .DS_Store
-Thumbs.db
-*.iml
 
-# Env files
+# Env & secrets
 .env
-ispoon-backend/.env
+**/.env
+**/serviceAccount.json
+**/google-services.json
+**/GoogleService-Info.plist
+.cursor/
+
+# Generated
+smartspoon/**/GeneratedPluginRegistrant.*
+smartspoon/flutter_01.png

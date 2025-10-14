@@ -7,6 +7,7 @@ import 'package:smartspoon/pages/home_page.dart';
 import 'package:smartspoon/main.dart';
 import 'package:smartspoon/validators.dart';
 import 'package:smartspoon/services/auth_service.dart';
+import 'package:smartspoon/services/firebase_auth_service.dart';
 import 'package:smartspoon/state/user_provider.dart';
 // Backend services removed
 
@@ -42,26 +43,48 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await AuthService.login(
+      final fb = FirebaseAuthService();
+      final result = await fb.signInWithEmail(
         email: _emailController.text,
         password: _passwordController.text,
       );
-      // populate user provider
-      try {
-        final me = await AuthService.getMe();
+      if (result['success'] == true) {
+        if (result['user'] is Map && result['user']['email'] != null) {
+          // refresh user to ensure latest verification status
+          try {
+            await fb.currentUser?.reload();
+          } catch (_) {}
+        }
+        if (fb.currentUser != null && fb.currentUser!.emailVerified == false) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please verify your email before logging in.'),
+            ),
+          );
+          return;
+        }
+        final idToken = result['token'] as String;
+        await AuthService.verifyFirebaseToken(idToken: idToken);
+        // populate user provider
+        try {
+          final me = await AuthService.getMe();
+          if (!mounted) return;
+          Provider.of<UserProvider>(
+            context,
+            listen: false,
+          ).setFromMap((me['user'] as Map<String, dynamic>));
+        } catch (_) {}
         if (!mounted) return;
-        Provider.of<UserProvider>(
+        ScaffoldMessenger.of(
           context,
-          listen: false,
-        ).setFromMap((me['user'] as Map<String, dynamic>));
-      } catch (_) {}
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Welcome back!')));
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const HomePage()),
-      );
+        ).showSnackBar(const SnackBar(content: Text('Welcome back!')));
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const HomePage()),
+        );
+      } else {
+        throw AuthException(result['message'] as String? ?? 'Login failed');
+      }
     } on AuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -73,10 +96,11 @@ class _LoginScreenState extends State<LoginScreen> {
         const SnackBar(content: Text('Login failed. Please try again.')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -380,14 +404,70 @@ class _LoginScreenState extends State<LoginScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         _buildSocialButton(Icons.facebook, size, () {
-          // Add Facebook login logic
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Facebook login coming soon')),
+          );
         }),
         SizedBox(width: size.width * 0.1),
-        _buildSocialButton(Icons.g_mobiledata, size, () {
-          // Add Google login logic
-        }),
+        _buildSocialButton(Icons.g_mobiledata, size, _signInWithGoogle),
       ],
     );
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final firebaseAuth = FirebaseAuthService();
+      final result = await firebaseAuth.signInWithGoogle();
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        final userData = result['user'] as Map<String, dynamic>;
+
+        // Sync with your backend (ispoon-backend)
+        // Verify Firebase ID token with backend and fetch user
+        try {
+          final idToken = result['token'] as String;
+          await AuthService.verifyFirebaseToken(idToken: idToken);
+          final me = await AuthService.getMe();
+          if (!mounted) return;
+          Provider.of<UserProvider>(
+            context,
+            listen: false,
+          ).setFromMap((me['user'] as Map<String, dynamic>));
+        } catch (_) {
+          // If backend sync fails, use Firebase data
+          if (!mounted) return;
+          Provider.of<UserProvider>(
+            context,
+            listen: false,
+          ).setFromMap(userData);
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Welcome!')));
+
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['message'] ?? 'Google sign-in failed')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Widget _buildSocialButton(IconData icon, Size size, VoidCallback onPressed) {
