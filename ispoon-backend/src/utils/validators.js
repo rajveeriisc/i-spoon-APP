@@ -1,9 +1,39 @@
-export const sanitizeEmail = (email) => (email || "").trim().toLowerCase();
+// Input sanitization functions
+export const sanitizeEmail = (email) => {
+  if (!email || typeof email !== 'string') return '';
+  return email.trim().toLowerCase().slice(0, 254); // Max email length
+};
+
+export const sanitizeString = (str, maxLength = 1000) => {
+  if (!str || typeof str !== 'string') return '';
+  return str.trim().slice(0, maxLength);
+};
+
+export const sanitizeNumber = (num, min = 0, max = 999999) => {
+  if (typeof num !== 'number' || isNaN(num)) return null;
+  return Math.max(min, Math.min(max, Math.round(num)));
+};
+
+export const sanitizeBoolean = (bool) => {
+  if (typeof bool === 'boolean') return bool;
+  if (typeof bool === 'string') {
+    const lower = bool.toLowerCase().trim();
+    return lower === 'true' || lower === '1';
+  }
+  return Boolean(bool);
+};
+
+export const sanitizeArray = (arr, maxLength = 100) => {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, maxLength).map(item =>
+    typeof item === 'string' ? item.trim().slice(0, 100) : item
+  );
+};
 
 export const isValidEmail = (email) => {
-  if (!email) return false;
+  if (!email || typeof email !== 'string') return false;
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
-  return re.test(email.trim());
+  return re.test(email.trim()) && email.length <= 254;
 };
 
 export const isStrongPassword = (password) => {
