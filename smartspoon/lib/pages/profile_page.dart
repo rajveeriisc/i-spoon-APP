@@ -12,7 +12,6 @@ import 'package:smartspoon/features/core/widgets/network_avatar.dart';
 import 'package:smartspoon/features/profile/widgets/profile_section_card.dart';
 import 'package:smartspoon/features/profile/widgets/profile_list_item.dart';
 import 'package:smartspoon/features/profile/widgets/user_info_card.dart';
-import 'package:smartspoon/features/profile/widgets/faq_section_card.dart';
 import 'package:smartspoon/features/profile/widgets/faq_page.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -39,8 +38,7 @@ class ProfilePage extends StatelessWidget {
           const SizedBox(height: 30),
           const HelpSupportCard(),
           const SizedBox(height: 30),
-          const FaqSectionCard(),
-          const SizedBox(height: 30),
+          // FAQ card removed; FAQ is accessible via Help & Support
           const AppInfoCard(),
           const SizedBox(height: 30),
           SizedBox(
@@ -359,7 +357,7 @@ class HelpSupportCard extends StatelessWidget {
           value: '',
           onTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Feedback: support@smartspoon.app')),
+              const SnackBar(content: Text('Feedback: support@i-spoon.app')),
             );
           },
         ),
@@ -369,7 +367,7 @@ class HelpSupportCard extends StatelessWidget {
           value: '',
           onTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Contact: support@smartspoon.app')),
+              const SnackBar(content: Text('Contact: support@i-spoon.app')),
             );
           },
         ),

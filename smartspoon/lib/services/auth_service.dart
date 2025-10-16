@@ -1,6 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
@@ -40,14 +39,12 @@ class AuthService {
   }
 
   static String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:5000';
-    }
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      // Android emulator -> host machine
-      return 'http://10.0.2.2:5000';
-    }
-    return 'http://localhost:5000';
+    // Allow override at build time: flutter run --dart-define=API_BASE_URL=http://<machine-ip>:5000
+    const fromEnv = String.fromEnvironment('API_BASE_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    // Default per platform: web talks to localhost; devices use LAN IP of dev machine
+    if (kIsWeb) return 'http://localhost:5000';
+    return 'http://10.121.55.85:5000';
   }
 
   static String get baseUrl => _baseUrl;
@@ -57,11 +54,13 @@ class AuthService {
     required String password,
   }) async {
     final uri = Uri.parse('$_baseUrl/api/auth/login');
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email.trim(), 'password': password}),
-    );
+    final resp = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email.trim(), 'password': password}),
+        )
+        .timeout(const Duration(seconds: 15));
 
     final Map<String, dynamic> data = _decodeBody(resp.body);
     if (resp.statusCode == 200) {
@@ -85,11 +84,13 @@ class AuthService {
       'password': password,
       if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
     };
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
+    final resp = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 20));
     final Map<String, dynamic> data = _decodeBody(resp.body);
     if (resp.statusCode == 201) {
       return data;
@@ -106,17 +107,19 @@ class AuthService {
     String? avatarUrl,
   }) async {
     final uri = Uri.parse('$_baseUrl/api/auth/social');
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'provider': provider,
-        'email': email,
-        'name': name,
-        'firebase_uid': firebaseUid,
-        'avatar_url': avatarUrl,
-      }),
-    );
+    final resp = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'provider': provider,
+            'email': email,
+            'name': name,
+            'firebase_uid': firebaseUid,
+            'avatar_url': avatarUrl,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
     final data = _decodeBody(resp.body);
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
       if (data.containsKey('token')) {
@@ -132,11 +135,13 @@ class AuthService {
     required String idToken,
   }) async {
     final uri = Uri.parse('$_baseUrl/api/auth/firebase/verify');
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'idToken': idToken}),
-    );
+    final resp = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'idToken': idToken}),
+        )
+        .timeout(const Duration(seconds: 20));
     final data = _decodeBody(resp.body);
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
       final token = data['token'] as String?;
@@ -161,14 +166,16 @@ class AuthService {
     final token = await getToken();
     if (token == null) throw AuthException('Not authenticated');
     final uri = Uri.parse('$_baseUrl/api/users/me');
-    final resp = await http.put(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(data),
-    );
+    final resp = await http
+        .put(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(data),
+        )
+        .timeout(const Duration(seconds: 20));
     final body = _decodeBody(resp.body);
     if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
     throw AuthException(_extractErrorMessage(body));
@@ -178,13 +185,15 @@ class AuthService {
     final token = await getToken();
     if (token == null) throw AuthException('Not authenticated');
     final uri = Uri.parse('$_baseUrl/api/users/me');
-    final resp = await http.get(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
+    final resp = await http
+        .get(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(const Duration(seconds: 15));
     final body = _decodeBody(resp.body);
     if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
     throw AuthException(_extractErrorMessage(body));
@@ -210,7 +219,7 @@ class AuthService {
         contentType: MediaType(parts.first, parts.last),
       ),
     );
-    final streamed = await request.send();
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
     final resp = await http.Response.fromStream(streamed);
     final body = _decodeBody(resp.body);
     if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
@@ -221,10 +230,9 @@ class AuthService {
     final token = await getToken();
     if (token == null) throw AuthException('Not authenticated');
     final uri = Uri.parse('$_baseUrl/api/users/me/avatar');
-    final resp = await http.delete(
-      uri,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final resp = await http
+        .delete(uri, headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 15));
     final body = _decodeBody(resp.body);
     if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
     throw AuthException(_extractErrorMessage(body));
@@ -235,11 +243,13 @@ class AuthService {
   // Forgot password: request reset link via email
   static Future<void> requestPasswordReset({required String email}) async {
     final uri = Uri.parse('$_baseUrl/api/auth/forgot');
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email.trim()}),
-    );
+    final resp = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email.trim()}),
+        )
+        .timeout(const Duration(seconds: 15));
     // backend always returns 200 with generic message; treat 2xx as OK
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final data = _decodeBody(resp.body);
@@ -253,11 +263,13 @@ class AuthService {
     required String newPassword,
   }) async {
     final uri = Uri.parse('$_baseUrl/api/auth/reset');
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'token': token, 'password': newPassword}),
-    );
+    final resp = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'token': token, 'password': newPassword}),
+        )
+        .timeout(const Duration(seconds: 15));
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final data = _decodeBody(resp.body);
       throw AuthException(_extractErrorMessage(data));

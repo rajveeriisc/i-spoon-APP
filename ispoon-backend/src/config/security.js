@@ -37,10 +37,8 @@ export const SECURITY_CONFIG = {
     AUDIENCE: 'i-spoon-mobile',
   },
 
-  // CORS allowed origins (for production)
-  ALLOWED_ORIGINS: process.env.NODE_ENV === 'production'
-    ? ['https://yourdomain.com', 'https://www.yourdomain.com']
-    : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.0.2.2:3000'],
+  // CORS allowed origins (allow all)
+  ALLOWED_ORIGINS: true,
 };
 
 // Security utilities

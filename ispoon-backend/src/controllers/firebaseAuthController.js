@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
 import { getFirebaseAdmin } from "../config/firebaseAdmin.js";
+import { sendFirebaseVerificationEmail } from "../emails/firebase.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
 
@@ -101,6 +102,22 @@ export const verifyFirebaseToken = async (req, res) => {
     try { console.error("verifyFirebaseToken error:", err); } catch (_) {}
     const msg = String(err?.message || "");
     const isAuth = /id token|auth|credential|parse private key|pem/i.test(msg);
+    const status = isAuth ? 401 : 500;
+    return res.status(status).json({ message: isAuth ? "Invalid Firebase ID token" : "Internal error" });
+  }
+};
+
+export const sendVerification = async (req, res) => {
+  try {
+    const { idToken } = req.body || {};
+    if (!idToken || typeof idToken !== "string") {
+      return res.status(400).json({ message: "idToken is required" });
+    }
+    await sendFirebaseVerificationEmail(idToken);
+    return res.json({ message: "Verification email sent" });
+  } catch (err) {
+    const msg = String(err?.message || "");
+    const isAuth = /token|auth|credential|invalid/i.test(msg);
     const status = isAuth ? 401 : 500;
     return res.status(status).json({ message: isAuth ? "Invalid Firebase ID token" : "Internal error" });
   }

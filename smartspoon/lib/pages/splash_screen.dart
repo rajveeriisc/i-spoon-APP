@@ -124,7 +124,7 @@ class _SplashScreenState extends State<SplashScreen>
               FadeTransition(
                 opacity: _fadeAnimation,
                 child: Text(
-                  'Smart Spoon',
+                  'i-Spoon',
                   style: GoogleFonts.lato(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,

@@ -2,7 +2,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { signup, login, logout, forgotPassword, resetPassword } from "../../controllers/authController.js";
 import { socialLogin } from "../../controllers/socialAuthController.js";
-import { verifyFirebaseToken } from "../../controllers/firebaseAuthController.js";
+import { verifyFirebaseToken, sendVerification } from "../../controllers/firebaseAuthController.js";
 
 const router = express.Router();
 
@@ -12,6 +12,7 @@ router.post("/login", login);
 router.post("/logout", logout);
 router.post("/social", socialLogin);
 router.post("/firebase/verify", verifyFirebaseToken);
+router.post("/firebase/send-verification", sendVerification);
 
 const limiterTight = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
 router.post("/forgot", limiterTight, forgotPassword);

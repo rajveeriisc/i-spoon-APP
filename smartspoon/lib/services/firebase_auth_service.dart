@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
 
 class FirebaseAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -94,25 +95,28 @@ class FirebaseAuthService {
   // Sign in with Google (without Firestore)
   Future<Map<String, dynamic>> signInWithGoogle() async {
     try {
-      // Trigger the authentication flow
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
-      if (googleUser == null) {
-        return {'success': false, 'message': 'Google sign-in cancelled'};
+      UserCredential userCredential;
+      if (kIsWeb) {
+        // On web prefer popup-based auth to avoid redirects and blocked popups
+        final provider = GoogleAuthProvider();
+        userCredential = await _auth.signInWithPopup(provider);
+      } else {
+        // Trigger the authentication flow on mobile/desktop
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) {
+          return {'success': false, 'message': 'Google sign-in cancelled'};
+        }
+        // Obtain the auth details from the request
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+        // Create a new credential
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        // Sign in to Firebase with the Google credential
+        userCredential = await _auth.signInWithCredential(credential);
       }
-
-      // Obtain the auth details from the request
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Sign in to Firebase with the Google credential
-      final userCredential = await _auth.signInWithCredential(credential);
       final user = userCredential.user;
 
       if (user != null) {

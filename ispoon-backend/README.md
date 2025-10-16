@@ -1,6 +1,6 @@
 # iSpoon Backend
 
-A secure Node.js/Express backend for the SmartSpoon mobile app, using Firebase Authentication and Neon PostgreSQL.
+A secure Node.js/Express backend for the i-Spoon mobile app, using Firebase Authentication and Neon PostgreSQL.
 
 ## Features
 
@@ -44,6 +44,9 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccount.json
 # FIREBASE_PROJECT_ID=your-project-id
 # FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxx@your-project-id.iam.gserviceaccount.com
 # FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Firebase Web API key (for backend to send password reset emails)
+FIREBASE_WEB_API_KEY=your-firebase-web-api-key
 ```
 
 ## Authentication Flow
@@ -167,20 +170,20 @@ CMD ["npm", "start"]
 
 ### Common Issues
 
-**Firebase Admin fails to initialize**
+#### Firebase Admin fails to initialize
 - Ensure `GOOGLE_APPLICATION_CREDENTIALS` points to valid service account JSON
 - Or set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` in `.env`
 - Check Firebase Console → Project Settings → Service Accounts
 
-**Database connection fails**
+#### Database connection fails
 - Verify `DATABASE_URL` format and credentials
 - Ensure Neon database allows connections from your IP
 
-**Email verification not working**
+#### Email verification not working
 - Check Firebase Auth settings for authorized domains
 - Verify SMTP settings if using custom email provider
 
-**CORS errors in browser**
+#### CORS errors in browser
 - Update `SECURITY_CONFIG.ALLOWED_ORIGINS` for your domains
 - Check if preflight requests are handled correctly
 

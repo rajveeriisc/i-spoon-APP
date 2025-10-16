@@ -105,10 +105,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
         const SnackBar(content: Text('Signup failed. Please try again.')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

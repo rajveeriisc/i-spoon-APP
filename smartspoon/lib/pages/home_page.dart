@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/main.dart';
 import 'package:smartspoon/pages/add_device_screen.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartspoon/features/insights/application/insights_controller.dart';
 import 'package:smartspoon/features/insights/infrastructure/mock_insights_repository.dart';
 import 'package:smartspoon/features/insights/presentation/insights_dashboard.dart';
@@ -656,12 +658,46 @@ class InfoColumn extends StatelessWidget {
 }
 
 // MyDevices displays a list of connected devices
-class MyDevices extends StatelessWidget {
+class MyDevices extends StatefulWidget {
   const MyDevices({super.key});
+
+  @override
+  State<MyDevices> createState() => _MyDevicesState();
+}
+
+class _MyDevicesState extends State<MyDevices> {
+  List<BluetoothDevice> _connected = const [];
+  List<_RecentDevice> _recent = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    try {
+      final connected = FlutterBluePlus.connectedDevices;
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('ble_recent') ?? const <String>[];
+      final parsed = list
+          .map((s) => _RecentDevice.fromString(s))
+          .whereType<_RecentDevice>()
+          .toList();
+      setState(() {
+        _connected = connected;
+        _recent = parsed;
+      });
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final connectedIds = _connected.map((d) => d.remoteId.toString()).toSet();
+    final recentNotConnected = _recent
+        .where((r) => !connectedIds.contains(r.id))
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -674,21 +710,56 @@ class MyDevices extends StatelessWidget {
           ),
         ),
         SizedBox(height: screenWidth * 0.05),
-        const DeviceCard(
-          deviceName: 'Smart Spoon Pro',
-          batteryLevel: '85%',
-          lastUsed: '2 hours ago',
-          isConnected: true,
+
+        // Live connected devices
+        ..._connected.map(
+          (d) => Padding(
+            padding: EdgeInsets.only(bottom: screenWidth * 0.04),
+            child: DeviceCard(
+              deviceName: d.platformName.isNotEmpty
+                  ? d.platformName
+                  : 'Unknown Device',
+              batteryLevel: '—',
+              lastUsed: 'Connected now',
+              isConnected: true,
+            ),
+          ),
         ),
-        SizedBox(height: screenWidth * 0.04),
-        const DeviceCard(
-          deviceName: 'Smart Spoon Lite',
-          batteryLevel: '42%',
-          lastUsed: '1 day ago',
-          isConnected: false,
+
+        // Previously connected devices
+        ...recentNotConnected.map(
+          (r) => Padding(
+            padding: EdgeInsets.only(bottom: screenWidth * 0.04),
+            child: DeviceCard(
+              deviceName: r.name,
+              batteryLevel: '—',
+              lastUsed: 'Previously',
+              isConnected: false,
+            ),
+          ),
         ),
+
+        if (_connected.isEmpty && recentNotConnected.isEmpty)
+          Text(
+            'No devices yet',
+            style: TextStyle(color: Colors.grey, fontSize: screenWidth * 0.04),
+          ),
       ],
     );
+  }
+}
+
+class _RecentDevice {
+  final String id;
+  final String name;
+  const _RecentDevice({required this.id, required this.name});
+  static _RecentDevice? fromString(String s) {
+    final i = s.indexOf('|');
+    if (i <= 0) return null;
+    final id = s.substring(0, i);
+    final name = s.substring(i + 1);
+    if (id.isEmpty) return null;
+    return _RecentDevice(id: id, name: name.isEmpty ? 'Unknown Device' : name);
   }
 }
 

@@ -2,12 +2,12 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import authRoutes from "./modules/auth/routes.js";
 import userRoutes from "./modules/users/routes.js";
 import path from "path";
 import { handleError, errorMiddleware } from "./utils/errorHandler.js";
-import { getResetPasswordPage } from "./emails/templates/resetPasswordPage.js";
 import { SECURITY_CONFIG, validateSecurityConfig } from "./config/security.js";
 
 dotenv.config();
@@ -21,7 +21,8 @@ try {
 }
 
 const app = express();
-
+// after: const app = express();
+app.set('trust proxy', 1); // trust first proxy (ngrok)
 // Security headers with COOP/COEP disabled for dev (GIS popups)
 app.use(helmet({
   crossOriginOpenerPolicy: false,
@@ -46,6 +47,7 @@ app.use(cors({
 }));
 app.options("*", cors());
 
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -71,13 +73,6 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const resetLimiter = rateLimit({
-  ...SECURITY_CONFIG.RATE_LIMITS.RESET,
-  message: { message: 'Too many password reset attempts, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 // Default route
 app.get("/", (req, res) => {
   res.send("🥄 iSpoon Backend API Running with NeonDB & CORS ✅");
@@ -98,7 +93,7 @@ app.get("/reset-password", (req, res) => {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Reset Password • SmartSpoon</title>
+    <title>Reset Password • i-Spoon</title>
     <style>
       :root{--bg:#0f172a;--card:#111827;--muted:#6b7280;--text:#e5e7eb;--primary:#6366f1;--ok:#10b981;--err:#ef4444}
       *{box-sizing:border-box}
@@ -192,7 +187,7 @@ app.get("/reset-password", (req, res) => {
             </svg>
             <h3>Password updated!</h3>
             <p>You can now close this page and log in.</p>
-            <a class="btn outline" href="/">Return to SmartSpoon</a>
+          <a class="btn outline" href="/">Return to i-Spoon</a>
           </div>
         </div>
         <div class="foot">

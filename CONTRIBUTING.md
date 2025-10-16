@@ -1,10 +1,10 @@
-# Contributing to SmartSpoon
+# Contributing to i-Spoon
 
 This guide helps new contributors ramp up quickly.
 
 ## Project structure
 
-- smartspoon/ – Flutter app
+- smartspoon/ – Flutter app (i-Spoon)
   - lib/ui/theme/ – app themes
   - lib/ui/widgets/ – reusable widgets (e.g., NetworkAvatar)
   - lib/pages/ – screen pages

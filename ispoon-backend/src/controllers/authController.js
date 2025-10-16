@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import { createUser, getUserByEmail, setResetTokenForUser, getUserByResetToken, clearResetTokenAndSetPassword } from "../models/userModel.js";
-import { sendWelcomeEmail, sendPasswordResetEmail, buildResetPasswordUrl } from "../emails/service.js";
+import { sendFirebasePasswordResetEmail } from "../emails/firebase.js";
 import {
   sanitizeEmail,
   validateSignup,
@@ -27,12 +27,7 @@ export const signup = async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const newUser = await createUser(normalizedEmail, hashed, name);
 
-    // Fire-and-forget welcome email (do not block response)
-    Promise.resolve().then(() => {
-      sendWelcomeEmail({ to: newUser.email, name: newUser.name }).catch((e) => {
-        console.error("Welcome email failed:", e?.message || e);
-      });
-    });
+    // No welcome email: Firebase handles verification emails on signup
 
     res.status(201).json({ message: "Signup successful", user: newUser });
   } catch (err) {
@@ -80,22 +75,14 @@ export const forgotPassword = async (req, res) => {
   try {
     const email = (req.body?.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Email is required" });
-    const user = await getUserByEmail(email);
-    if (!user) return res.status(404).json({ message: "Account not found" });
-
-    // Generate secure token and expiry (1 hour)
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-    await setResetTokenForUser(email, token, expiresAt);
-
-    const resetUrl = buildResetPasswordUrl(token);
+    // Send password reset email via Firebase Auth
     try {
-      await sendPasswordResetEmail({ to: email, resetUrl });
+      await sendFirebasePasswordResetEmail(email);
     } catch (e) {
-      console.error("Email send failed:", e?.message || e);
+      // Do not leak whether email exists; log and return generic message
+      try { console.error("Firebase reset email failed:", e?.message || e); } catch (_) {}
     }
-
-    res.json({ message: "Reset link sent" });
+    res.json({ message: "If an account exists, a reset email has been sent" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -106,7 +93,15 @@ export const resetPassword = async (req, res) => {
   try {
     const token = (req.body?.token || req.body?.Token || req.body?.TOKEN || "").toString().trim();
     const newPassword = (req.body?.password || req.body?.Password || "").toString();
+    const csrfToken = (req.body?.csrfToken || req.body?.csrf_token || "").toString().trim();
+
     if (!token || !newPassword) return res.status(400).json({ message: "Token and password are required" });
+
+    // Validate CSRF token from form data and cookie
+    const cookieCSRFToken = req.cookies?.csrfToken;
+    if (!csrfToken || !cookieCSRFToken || csrfToken !== cookieCSRFToken) {
+      return res.status(403).json({ message: "Invalid CSRF token" });
+    }
     if (typeof newPassword !== 'string' || newPassword.length < 8 ||
         !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) ||
         !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {

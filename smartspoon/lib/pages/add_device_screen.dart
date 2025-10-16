@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -18,6 +19,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   bool _bluetoothEnabled = false;
   final List<ScanResult> _scanResults = [];
   List<BluetoothDevice> _connectedDevices = [];
+  List<_RecentDevice> _recentDevices = [];
   StreamSubscription? _scanSubscription;
   StreamSubscription? _adapterStateSubscription;
   late AnimationController _animationController;
@@ -31,6 +33,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
       duration: const Duration(milliseconds: 300),
     );
     _initBluetooth();
+    _loadRecentDevices();
   }
 
   @override
@@ -102,63 +105,18 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   }
 
   Future<void> _requestPermissions() async {
-    // Request location permission (required for BLE scanning on Android)
-    final locationStatus = await Permission.location.status;
-    if (locationStatus.isDenied) {
-      final result = await Permission.location.request();
-      if (!result.isGranted && !result.isLimited) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location permission is required for BLE scanning'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
-        return;
-      }
+    // Android 12+ BLE permissions
+    var scanStatus = await Permission.bluetoothScan.status;
+    if (scanStatus.isDenied) {
+      scanStatus = await Permission.bluetoothScan.request();
     }
-
-    if (await Permission.location.isPermanentlyDenied) {
-      if (mounted) {
-        _showPermissionDialog();
-      }
-      return;
-    }
-
-    // Request Bluetooth permission (Android 12+)
-    if (await Permission.bluetoothScan.isDenied) {
-      await Permission.bluetoothScan.request();
-    }
-    if (await Permission.bluetoothConnect.isDenied) {
-      await Permission.bluetoothConnect.request();
+    var connectStatus = await Permission.bluetoothConnect.status;
+    if (connectStatus.isDenied) {
+      connectStatus = await Permission.bluetoothConnect.request();
     }
   }
 
-  void _showPermissionDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Permission Required'),
-        content: const Text(
-          'Location permission is permanently denied. Please enable it from app settings to scan for BLE devices.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              openAppSettings();
-              Navigator.pop(context);
-            },
-            child: const Text('Open Settings'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Location permission dialog removed; Android 12+ BLE does not require location
 
   Future<void> _startScan() async {
     // Double check Bluetooth state before scanning
@@ -188,6 +146,20 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
     }
 
     await _requestPermissions();
+
+    // Ensure we have scan permission (Android 12+). We do not request location here.
+    final hasScan = await Permission.bluetoothScan.isGranted;
+    if (!hasScan) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Missing Bluetooth Scan permission'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return;
+    }
 
     setState(() {
       _isScanning = true;
@@ -226,10 +198,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
         },
       );
 
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 5),
-        androidUsesFineLocation: true,
-      );
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
 
       // Wait for scan to complete
       await FlutterBluePlus.isScanning.where((val) => val == false).first;
@@ -292,6 +261,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
           _connectedDevices.add(device);
         }
       });
+
+      // Save to recent list
+      await _saveRecentDevice(
+        id: device.remoteId.toString(),
+        name: device.platformName.isNotEmpty
+            ? device.platformName
+            : 'Unknown Device',
+      );
 
       if (mounted) {
         Navigator.pop(context); // Close loading dialog
@@ -368,6 +345,43 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
     }
   }
 
+  // Recent devices persistence
+  Future<void> _loadRecentDevices() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('ble_recent') ?? <String>[];
+      setState(() {
+        _recentDevices = list
+            .map((s) => _RecentDevice.fromString(s))
+            .whereType<_RecentDevice>()
+            .toList();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveRecentDevice({
+    required String id,
+    required String name,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final current = prefs.getStringList('ble_recent') ?? <String>[];
+      final entry = _RecentDevice(id: id, name: name).toString();
+      // de-duplicate by id
+      final filtered = current
+          .map((s) => _RecentDevice.fromString(s))
+          .whereType<_RecentDevice>()
+          .where((d) => d.id != id)
+          .map((d) => d.toString())
+          .toList();
+      filtered.insert(0, entry);
+      // keep up to 5
+      if (filtered.length > 5) filtered.removeRange(5, filtered.length);
+      await prefs.setStringList('ble_recent', filtered);
+      await _loadRecentDevices();
+    } catch (_) {}
+  }
+
   bool _isDeviceConnected(BluetoothDevice device) {
     return _connectedDevices.any((d) => d.remoteId == device.remoteId);
   }
@@ -436,6 +450,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                     ),
                   );
                 }),
+
+              // Previously connected devices
+              _buildRecentSection(context),
             ],
           ),
         ),
@@ -473,7 +490,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Add a Smart Spoon',
+                  'Add an i-Spoon',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -581,6 +598,66 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                   ),
                 )
                 .toList(),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildRecentSection(BuildContext context) {
+    if (_recentDevices.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Colors.deepPurple,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Previously Connected',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ..._recentDevices.map(
+          (d) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline.withAlpha(40),
+              ),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.history),
+              title: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                d.id,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: TextButton(
+                onPressed: () async {
+                  final dev = BluetoothDevice.fromId(d.id);
+                  await _connectToDevice(dev);
+                },
+                child: const Text('Connect'),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -924,5 +1001,21 @@ class _ModernDeviceCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _RecentDevice {
+  final String id;
+  final String name;
+  const _RecentDevice({required this.id, required this.name});
+  @override
+  String toString() => '$id|$name';
+  static _RecentDevice? fromString(String s) {
+    final i = s.indexOf('|');
+    if (i <= 0) return null;
+    final id = s.substring(0, i);
+    final name = s.substring(i + 1);
+    if (id.isEmpty) return null;
+    return _RecentDevice(id: id, name: name.isEmpty ? 'Unknown Device' : name);
   }
 }

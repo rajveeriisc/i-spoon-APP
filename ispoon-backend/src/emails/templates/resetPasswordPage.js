@@ -5,7 +5,7 @@ export const getResetPasswordPage = (token = "") => {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reset Password • SmartSpoon</title>
+  <title>Reset Password • i-Spoon</title>
   <style>
     :root{--bg:#0f172a;--card:#111827;--muted:#6b7280;--text:#e5e7eb;--primary:#6366f1;--ok:#10b981;--err:#ef4444}
     *{box-sizing:border-box}
@@ -60,6 +60,7 @@ export const getResetPasswordPage = (token = "") => {
         <p class="desc">Create a strong password meeting all requirements below.</p>
         <form id="resetForm" method="post" action="/api/auth/reset" novalidate>
           <input type="hidden" name="token" id="token" value="${token}" />
+          <input type="hidden" name="csrfToken" id="csrfToken" value="" />
 
           <div class="row">
             <label for="password">New password</label>
@@ -99,7 +100,7 @@ export const getResetPasswordPage = (token = "") => {
           </svg>
           <h3>Password updated!</h3>
           <p>You can now close this page and log in.</p>
-          <a class="btn outline" href="/">Return to SmartSpoon</a>
+          <a class="btn outline" href="/">Return to i-Spoon</a>
         </div>
       </div>
       <div class="foot">
@@ -148,12 +149,26 @@ export const getResetPasswordPage = (token = "") => {
         mh.style.color = ok ? 'var(--ok)' : 'var(--err)';
         return ok;
       };
-      const setTokenFrag = () => {
-        const t = token.value || '';
-        const frag = t.length > 12 ? (t.slice(0,6) + '...' + t.slice(-6)) : t;
-        $("tokenFrag").textContent = frag;
-      };
-      setTokenFrag();
+        const setTokenFrag = () => {
+          const t = token.value || '';
+          const frag = t.length > 12 ? (t.slice(0,6) + '...' + t.slice(-6)) : t;
+          $("tokenFrag").textContent = frag;
+        };
+        setTokenFrag();
+
+        // Generate CSRF token
+        const generateCSRFToken = () => {
+          const array = new Uint8Array(32);
+          crypto.getRandomValues(array);
+          return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+        };
+
+        // Set CSRF token
+        const csrfToken = $("csrfToken");
+        csrfToken.value = generateCSRFToken();
+
+        // Set CSRF cookie with SameSite protection
+        document.cookie = `csrfToken=${csrfToken.value}; SameSite=Strict; Secure; Path=/api/auth/reset`;
 
       pw.addEventListener('input', ()=>{ validate(); match(); });
       cf.addEventListener('input', match);

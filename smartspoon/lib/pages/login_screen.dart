@@ -66,6 +66,17 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         final idToken = result['token'] as String;
         await AuthService.verifyFirebaseToken(idToken: idToken);
+        // Ensure backend JWT persisted before proceeding
+        final storedJwt = await AuthService.getToken();
+        if (storedJwt == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Authentication failed. Please try again.'),
+            ),
+          );
+          return;
+        }
         // populate user provider
         try {
           final me = await AuthService.getMe();
@@ -111,6 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final availableHeight = _calculateAvailableHeight(context);
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -142,8 +154,11 @@ class _LoginScreenState extends State<LoginScreen> {
     BoxConstraints constraints,
   ) {
     return SingleChildScrollView(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: availableHeight),
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
         child: Container(
           decoration: _buildGradient(themeMode),
           child: Padding(
@@ -152,6 +167,7 @@ class _LoginScreenState extends State<LoginScreen> {
               key: _formKey,
               child: AutofillGroup(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: _buildLoginContent(context, size),
@@ -431,6 +447,16 @@ class _LoginScreenState extends State<LoginScreen> {
         try {
           final idToken = result['token'] as String;
           await AuthService.verifyFirebaseToken(idToken: idToken);
+          final storedJwt = await AuthService.getToken();
+          if (storedJwt == null) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Authentication failed. Please try again.'),
+              ),
+            );
+            return;
+          }
           final me = await AuthService.getMe();
           if (!mounted) return;
           Provider.of<UserProvider>(

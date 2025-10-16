@@ -14,7 +14,7 @@ class TermsPage extends StatelessWidget {
         child: ListView(
           children: [
             Text(
-              'SmartSpoon Terms & Privacy',
+              'i-Spoon Terms & Privacy',
               style: GoogleFonts.lato(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -25,7 +25,7 @@ class TermsPage extends StatelessWidget {
             Text(
               'This is a placeholder terms and privacy page. Replace with your actual policy.\n\n'
               'We collect basic profile information and device activity to provide the service. '
-              'You can request data deletion by contacting support@smartspoon.app.',
+              'You can request data deletion by contacting support@i-spoon.app.',
               style: GoogleFonts.lato(fontSize: 14, color: onSurface),
             ),
           ],
