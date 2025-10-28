@@ -3,7 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/services/auth_service.dart';
 import 'package:smartspoon/state/user_provider.dart';
-import 'package:smartspoon/features/core/widgets/network_avatar.dart';
+import 'package:smartspoon/features/profile/presentation/widgets/form_section.dart';
+import 'package:smartspoon/features/profile/presentation/widgets/header_card.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -275,9 +276,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20),
-                  _HeaderCard(onEditImage: () {}, name: _nameController.text),
+                  ProfileHeaderCard(displayName: _nameController.text),
                   const SizedBox(height: 28),
-                  _SectionCard(
+                  FormSection(
                     title: 'Personal Information',
                     children: [
                       _buildTextField(
@@ -348,7 +349,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  _SectionCard(
+                  FormSection(
                     title: 'Health Preferences',
                     children: [
                       _buildDropdownField(
@@ -419,7 +420,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  _SectionCard(
+                  FormSection(
                     title: 'Safety & Notifications',
                     children: [
                       _buildTextField(
@@ -602,199 +603,4 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.children});
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    final onSurface = theme.colorScheme.onSurface;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: isDarkMode
-                ? Colors.black.withValues(alpha: 0.35)
-                : Colors.black.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: GoogleFonts.lato(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: onSurface,
-            ),
-          ),
-          const SizedBox(height: 18),
-          ...children,
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({required this.onEditImage, required this.name});
-
-  final VoidCallback onEditImage;
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDarkMode
-              ? [const Color(0xFF2B2B2B), const Color(0xFF1A1A1A)]
-              : [const Color(0xFFBBDEFB), const Color(0xFFE1BEE7)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Stack(
-            alignment: Alignment.bottomRight,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: isDarkMode ? 0.4 : 0.18,
-                      ),
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Consumer<UserProvider>(
-                  builder: (_, user, __) => NetworkAvatar(
-                    radius: 60,
-                    avatarUrl: user.avatarUrl,
-                    displayName: user.name,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text(
-            name.isNotEmpty ? name : 'Your Name',
-            style: GoogleFonts.lato(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: colorScheme.onPrimary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 6),
-          const SizedBox(height: 6),
-          const SizedBox(height: 20),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 12,
-            runSpacing: 12,
-            children: const [
-              _HeaderMetric(
-                icon: Icons.star_rounded,
-                label: 'Streak',
-                value: '12 days',
-              ),
-              _HeaderMetric(
-                icon: Icons.track_changes,
-                label: 'Daily Goal',
-                value: '200 bites',
-              ),
-              _HeaderMetric(
-                icon: Icons.timer_outlined,
-                label: 'Pace',
-                value: 'Mindful',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderMetric extends StatelessWidget {
-  const _HeaderMetric({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: colorScheme.onPrimary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20, color: colorScheme.onPrimary),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: GoogleFonts.lato(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onPrimary.withValues(alpha: 0.85),
-                ),
-              ),
-              Text(
-                value,
-                style: GoogleFonts.lato(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onPrimary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
+// header metric moved into ProfileHeaderCard or separate widget if needed

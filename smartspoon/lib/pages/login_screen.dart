@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:smartspoon/features/auth/widgets/auth_form_header.dart';
+import 'package:smartspoon/features/auth/widgets/auth_layout.dart';
+import 'package:smartspoon/features/auth/widgets/auth_primary_button.dart';
+import 'package:smartspoon/features/auth/widgets/auth_text_field.dart';
+import 'package:smartspoon/features/auth/widgets/social_buttons_row.dart';
 import 'package:smartspoon/pages/signup_screen.dart';
 import 'package:smartspoon/pages/forgot_password.dart';
 import 'package:smartspoon/pages/home_page.dart';
@@ -117,317 +121,124 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final themeMode = Provider.of<ThemeProvider>(context).themeMode;
-    final availableHeight = _calculateAvailableHeight(context);
-
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return _buildResponsiveLayout(
-              context,
-              size,
-              themeMode,
-              availableHeight,
-              constraints,
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  double _calculateAvailableHeight(BuildContext context) {
-    return MediaQuery.of(context).size.height -
-        MediaQuery.of(context).padding.top -
-        MediaQuery.of(context).padding.bottom -
-        MediaQuery.of(context).viewInsets.bottom;
-  }
-
-  Widget _buildResponsiveLayout(
-    BuildContext context,
-    Size size,
-    ThemeMode themeMode,
-    double availableHeight,
-    BoxConstraints constraints,
-  ) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: constraints.maxHeight),
-        child: Container(
-          decoration: _buildGradient(themeMode),
-          child: Padding(
-            padding: _calculatePadding(size),
-            child: Form(
-              key: _formKey,
-              child: AutofillGroup(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: _buildLoginContent(context, size),
-                ),
-              ),
-            ),
+    return AuthLayout(
+      child: Form(
+        key: _formKey,
+        child: AutofillGroup(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: _buildFormContent(context),
           ),
         ),
       ),
     );
   }
 
-  BoxDecoration _buildGradient(ThemeMode themeMode) {
-    return BoxDecoration(
-      gradient: LinearGradient(
-        colors: [
-          themeMode == ThemeMode.light
-              ? const Color(0xFFBBDEFB)
-              : const Color(0xFF1E1E1E),
-          themeMode == ThemeMode.light
-              ? const Color(0xFFE1BEE7)
-              : const Color(0xFF2A2A2A),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-    );
-  }
+  List<Widget> _buildFormContent(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final textTheme = Theme.of(context).textTheme;
+    final mutedColor = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.8);
 
-  EdgeInsets _calculatePadding(Size size) {
-    return EdgeInsets.symmetric(
-      horizontal: size.width * 0.08,
-      vertical: size.height * 0.02,
-    );
-  }
-
-  List<Widget> _buildLoginContent(BuildContext context, Size size) {
     return [
-      SizedBox(height: size.height * 0.05),
-      _buildWelcomeText(size),
-      SizedBox(height: size.height * 0.01),
-      _buildSubText(size),
-      SizedBox(height: size.height * 0.03),
-      _buildTextField(
+      const SizedBox(height: 32),
+      const AuthFormHeader(
+        title: 'Welcome Back!',
+        subtitle: 'Log in to your account',
+      ),
+      AuthTextField(
         controller: _emailController,
-        hintText: 'Email',
+        label: 'Email',
         icon: Icons.email_outlined,
-        size: size,
         keyboardType: TextInputType.emailAddress,
         autofillHints: const [AutofillHints.username, AutofillHints.email],
         validator: _validateEmail,
       ),
-      SizedBox(height: size.height * 0.02),
-      _buildTextField(
+      const SizedBox(height: 16),
+      AuthTextField(
         controller: _passwordController,
-        hintText: 'Password',
+        label: 'Password',
         icon: Icons.lock_outline,
         obscureText: !_isPasswordVisible,
-        size: size,
-        suffixIcon: _buildPasswordVisibilityToggle(),
         autofillHints: const [AutofillHints.password],
         validator: _validatePassword,
-      ),
-      // Error handling moved to backend API
-      SizedBox(height: size.height * 0.01),
-      _buildForgotPassword(context),
-      SizedBox(height: size.height * 0.03),
-      _buildLoginButton(),
-      SizedBox(height: size.height * 0.03),
-      _buildOrContinueText(size),
-      SizedBox(height: size.height * 0.02),
-      _buildSocialButtons(size),
-      SizedBox(height: size.height * 0.03),
-      _buildSignUpPrompt(context),
-      SizedBox(height: size.height * 0.02),
-      _buildThemeToggle(context, size),
-    ];
-  }
-
-  Widget _buildWelcomeText(Size size) {
-    return Text(
-      'Welcome Back!',
-      style: GoogleFonts.lato(
-        fontSize: size.width > 360 ? 32.0 : 24.0,
-        fontWeight: FontWeight.bold,
-        color: Theme.of(context).colorScheme.onSurface,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
-  Widget _buildSubText(Size size) {
-    return Text(
-      'Log in to your account',
-      style: GoogleFonts.lato(
-        fontSize: size.width > 360 ? 16.0 : 12.0,
-        color: Theme.of(context).colorScheme.onSurface,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
-  String? _validateEmail(String? value) => validateEmail(value);
-
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Please enter your password';
-    }
-    return null;
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hintText,
-    required IconData icon,
-    required Size size,
-    bool obscureText = false,
-    Widget? suffixIcon,
-    String? Function(String?)? validator,
-    TextInputType? keyboardType,
-    List<String>? autofillHints,
-  }) {
-    return SizedBox(
-      width: size.width * 0.9,
-      child: TextFormField(
-        controller: controller,
-        obscureText: obscureText,
-        keyboardType: keyboardType,
-        autofillHints: autofillHints,
-        decoration: InputDecoration(
-          hintText: hintText,
-          filled: true,
-          fillColor: Theme.of(
-            context,
-          ).colorScheme.surface.withValues(alpha: 0.8),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12.0),
-            borderSide: BorderSide.none,
-          ),
-          prefixIcon: Icon(
-            icon,
-            size: size.width > 360 ? 20.0 : 16.0,
+        suffix: IconButton(
+          icon: Icon(
+            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          suffixIcon: suffixIcon,
-          hintStyle: GoogleFonts.lato(
-            fontSize: size.width > 360 ? 14.0 : 12.0,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        style: GoogleFonts.lato(
-          fontSize: size.width > 360 ? 14.0 : 12.0,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-        validator: validator,
-      ),
-    );
-  }
-
-  Widget _buildPasswordVisibilityToggle() {
-    return IconButton(
-      icon: Icon(
-        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        size: MediaQuery.of(context).size.width > 360 ? 20.0 : 16.0,
-      ),
-      onPressed: () {
-        setState(() {
-          _isPasswordVisible = !_isPasswordVisible;
-        });
-      },
-    );
-  }
-
-  Widget _buildForgotPassword(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: TextButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const ForgotPasswordScreen(),
-            ),
-          );
-        },
-        child: Text(
-          'Forgot Password?',
-          style: GoogleFonts.lato(
-            fontSize: MediaQuery.of(context).size.width > 360 ? 14.0 : 12.0,
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.bold,
-          ),
+          onPressed: () =>
+              setState(() => _isPasswordVisible = !_isPasswordVisible),
         ),
       ),
-    );
-  }
-
-  Widget _buildLoginButton() {
-    return SizedBox(
-      width: MediaQuery.of(context).size.width * 0.7,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _login,
-        style: ElevatedButton.styleFrom(
-          padding: EdgeInsets.symmetric(
-            vertical: MediaQuery.of(context).size.height * 0.02,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
-          ),
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        ),
-        child: _isLoading
-            ? SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              )
-            : Text(
-                'Login',
-                style: GoogleFonts.lato(
-                  fontSize: MediaQuery.of(context).size.width > 360
-                      ? 16.0
-                      : 14.0,
-                  fontWeight: FontWeight.bold,
-                ),
+      const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const ForgotPasswordScreen(),
               ),
+            );
+          },
+          child: Text(
+            'Forgot Password?',
+            style: textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
       ),
-    );
-  }
-
-  Widget _buildOrContinueText(Size size) {
-    return Text(
-      'Or continue with',
-      style: GoogleFonts.lato(
-        fontSize: size.width > 360 ? 14.0 : 12.0,
-        color: Theme.of(context).colorScheme.onSurface,
+      const SizedBox(height: 16),
+      AuthPrimaryButton(
+        label: 'Login',
+        loading: _isLoading,
+        onPressed: _isLoading ? null : _login,
       ),
-      textAlign: TextAlign.center,
-    );
-  }
-
-  Widget _buildSocialButtons(Size size) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildSocialButton(Icons.facebook, size, () {
+      const SizedBox(height: 16),
+      Text(
+        'Or continue with',
+        style: textTheme.bodyMedium?.copyWith(color: mutedColor),
+      ),
+      const SizedBox(height: 12),
+      SocialButtonsRow(
+        onFacebookPressed: () {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Facebook login coming soon')),
           );
-        }),
-        SizedBox(width: size.width * 0.1),
-        _buildSocialButton(Icons.g_mobiledata, size, _signInWithGoogle),
-      ],
-    );
+        },
+        onGooglePressed: _signInWithGoogle,
+      ),
+      const SizedBox(height: 24),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text("Don't have an account?", style: textTheme.bodyMedium),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const SignUpScreen()),
+              );
+            },
+            child: const Text('Sign Up'),
+          ),
+        ],
+      ),
+      IconButton(
+        icon: Icon(
+          Provider.of<ThemeProvider>(context).themeMode == ThemeMode.light
+              ? Icons.dark_mode
+              : Icons.light_mode,
+        ),
+        onPressed: () {
+          Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
+        },
+      ),
+      SizedBox(height: width > 360 ? 32 : 16),
+    ];
   }
 
   Future<void> _signInWithGoogle() async {
@@ -442,8 +253,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (result['success'] == true) {
         final userData = result['user'] as Map<String, dynamic>;
 
-        // Sync with your backend (ispoon-backend)
-        // Verify Firebase ID token with backend and fetch user
         try {
           final idToken = result['token'] as String;
           await AuthService.verifyFirebaseToken(idToken: idToken);
@@ -464,7 +273,6 @@ class _LoginScreenState extends State<LoginScreen> {
             listen: false,
           ).setFromMap((me['user'] as Map<String, dynamic>));
         } catch (_) {
-          // If backend sync fails, use Firebase data
           if (!mounted) return;
           Provider.of<UserProvider>(
             context,
@@ -496,64 +304,12 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Widget _buildSocialButton(IconData icon, Size size, VoidCallback onPressed) {
-    return IconButton(
-      onPressed: onPressed,
-      icon: Icon(
-        icon,
-        color: Theme.of(context).colorScheme.onSurface,
-        size: icon == Icons.g_mobiledata
-            ? (size.width > 360 ? 36.0 : 28.0)
-            : (size.width > 360 ? 28.0 : 24.0),
-      ),
-      tooltip: icon == Icons.facebook
-          ? 'Login with Facebook'
-          : 'Login with Google',
-    );
-  }
+  String? _validateEmail(String? value) => validateEmail(value);
 
-  Widget _buildSignUpPrompt(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          "Don't have an account?",
-          style: GoogleFonts.lato(
-            fontSize: MediaQuery.of(context).size.width > 360 ? 14.0 : 12.0,
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const SignUpScreen()),
-            );
-          },
-          child: Text(
-            'Sign Up',
-            style: GoogleFonts.lato(
-              fontSize: MediaQuery.of(context).size.width > 360 ? 14.0 : 12.0,
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildThemeToggle(BuildContext context, Size size) {
-    return IconButton(
-      icon: Icon(
-        Provider.of<ThemeProvider>(context).themeMode == ThemeMode.light
-            ? Icons.dark_mode
-            : Icons.light_mode,
-        size: size.width > 360 ? 24.0 : 20.0,
-        color: Theme.of(context).colorScheme.onSurface,
-      ),
-      onPressed: () {
-        Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
-      },
-    );
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter your password';
+    }
+    return null;
   }
 }

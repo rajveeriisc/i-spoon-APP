@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:smartspoon/features/ble/infrastructure/ble_recent_repository.dart';
+import 'package:smartspoon/features/ble/presentation/recent_section.dart';
+import 'package:smartspoon/features/ble/presentation/connected_carousel.dart';
+import 'package:provider/provider.dart';
+import 'package:smartspoon/features/ble/application/ble_controller.dart';
 
 class AddDeviceScreen extends StatefulWidget {
   const AddDeviceScreen({super.key});
@@ -19,7 +23,8 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   bool _bluetoothEnabled = false;
   final List<ScanResult> _scanResults = [];
   List<BluetoothDevice> _connectedDevices = [];
-  List<_RecentDevice> _recentDevices = [];
+  List<RecentDevice> _recentDevices = [];
+  final BleRecentRepository _recentRepo = BleRecentRepository();
   StreamSubscription? _scanSubscription;
   StreamSubscription? _adapterStateSubscription;
   late AnimationController _animationController;
@@ -250,10 +255,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
         );
       }
 
-      await device.connect(timeout: const Duration(seconds: 10));
-
-      // Discover services (prepare for future data transmission)
-      await device.discoverServices();
+      // Use central BleController so repository subscribes and streams data to UI
+      final ctrl = context.read<BleController>();
+      await ctrl.connect(device.remoteId.toString(), name: device.platformName);
 
       // Update connected devices list
       setState(() {
@@ -263,12 +267,15 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
       });
 
       // Save to recent list
-      await _saveRecentDevice(
-        id: device.remoteId.toString(),
-        name: device.platformName.isNotEmpty
-            ? device.platformName
-            : 'Unknown Device',
+      await _recentRepo.upsert(
+        RecentDevice(
+          id: device.remoteId.toString(),
+          name: device.platformName.isNotEmpty
+              ? device.platformName
+              : 'Unknown Device',
+        ),
       );
+      await _loadRecentDevices();
 
       if (mounted) {
         Navigator.pop(context); // Close loading dialog
@@ -318,7 +325,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
 
   Future<void> _disconnectDevice(BluetoothDevice device) async {
     try {
-      await device.disconnect();
+      // Use central BleController so repository unsubscribes and state resets
+      final ctrl = context.read<BleController>();
+      await ctrl.disconnect();
       setState(() {
         _connectedDevices.remove(device);
       });
@@ -345,40 +354,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
     }
   }
 
-  // Recent devices persistence
+  // Recent devices persistence (via repository)
   Future<void> _loadRecentDevices() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = prefs.getStringList('ble_recent') ?? <String>[];
-      setState(() {
-        _recentDevices = list
-            .map((s) => _RecentDevice.fromString(s))
-            .whereType<_RecentDevice>()
-            .toList();
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _saveRecentDevice({
-    required String id,
-    required String name,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final current = prefs.getStringList('ble_recent') ?? <String>[];
-      final entry = _RecentDevice(id: id, name: name).toString();
-      // de-duplicate by id
-      final filtered = current
-          .map((s) => _RecentDevice.fromString(s))
-          .whereType<_RecentDevice>()
-          .where((d) => d.id != id)
-          .map((d) => d.toString())
-          .toList();
-      filtered.insert(0, entry);
-      // keep up to 5
-      if (filtered.length > 5) filtered.removeRange(5, filtered.length);
-      await prefs.setStringList('ble_recent', filtered);
-      await _loadRecentDevices();
+      final list = await _recentRepo.load();
+      if (mounted) {
+        setState(() => _recentDevices = list);
+      }
     } catch (_) {}
   }
 
@@ -416,7 +398,10 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
               const SizedBox(height: 24),
 
               if (_connectedDevices.isNotEmpty)
-                _buildConnectedCarousel(context),
+                ConnectedCarousel(
+                  devices: _connectedDevices,
+                  onDisconnect: (d) => _disconnectDevice(d),
+                ),
 
               _buildFilterChips(context),
               const SizedBox(height: 8),
@@ -452,7 +437,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                 }),
 
               // Previously connected devices
-              _buildRecentSection(context),
+              RecentSection(
+                devices: _recentDevices,
+                onConnect: (d) async {
+                  final dev = BluetoothDevice.fromId(d.id);
+                  await _connectToDevice(dev);
+                },
+              ),
             ],
           ),
         ),
@@ -555,115 +546,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
     );
   }
 
-  Widget _buildConnectedCarousel(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 4,
-              height: 20,
-              decoration: BoxDecoration(
-                color: Colors.teal,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Connected Devices',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: _connectedDevices
-                .map(
-                  (d) => Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: _ConnectedCard(
-                      name: d.platformName.isNotEmpty
-                          ? d.platformName
-                          : 'Unknown Device',
-                      id: d.remoteId.toString(),
-                      onDisconnect: () => _disconnectDevice(d),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
+  // connected carousel moved to ConnectedCarousel widget
 
-  Widget _buildRecentSection(BuildContext context) {
-    if (_recentDevices.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 4,
-              height: 20,
-              decoration: BoxDecoration(
-                color: Colors.deepPurple,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Previously Connected',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        ..._recentDevices.map(
-          (d) => Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outline.withAlpha(40),
-              ),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.history),
-              title: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(
-                d.id,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: TextButton(
-                onPressed: () async {
-                  final dev = BluetoothDevice.fromId(d.id);
-                  await _connectToDevice(dev);
-                },
-                child: const Text('Connect'),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
+  // recent section moved to RecentSection widget
 
   Widget _buildNearbyHeader(BuildContext context) {
     final count = _scanResults.length;
@@ -819,85 +704,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   }
 }
 
-class _ConnectedCard extends StatelessWidget {
-  final String name;
-  final String id;
-  final VoidCallback onDisconnect;
-  const _ConnectedCard({
-    required this.name,
-    required this.id,
-    required this.onDisconnect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withAlpha(40),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withAlpha(36),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.bluetooth_connected,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      id,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withAlpha(160),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: onDisconnect,
-              child: const Text('Disconnect'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// connected card moved to ConnectedCarousel widget
 
 class _SignalBars extends StatelessWidget {
   final int rssi;
@@ -1004,18 +811,4 @@ class _ModernDeviceCard extends StatelessWidget {
   }
 }
 
-class _RecentDevice {
-  final String id;
-  final String name;
-  const _RecentDevice({required this.id, required this.name});
-  @override
-  String toString() => '$id|$name';
-  static _RecentDevice? fromString(String s) {
-    final i = s.indexOf('|');
-    if (i <= 0) return null;
-    final id = s.substring(0, i);
-    final name = s.substring(i + 1);
-    if (id.isEmpty) return null;
-    return _RecentDevice(id: id, name: name.isEmpty ? 'Unknown Device' : name);
-  }
-}
+// recent device model moved to ble_recent_repository.dart

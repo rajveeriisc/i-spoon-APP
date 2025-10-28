@@ -1,9 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter/services.dart';
 import '../domain/ble_repository.dart';
 import '../domain/models.dart';
 
 class FlutterBluePlusRepository implements BleRepository {
+  // Updated to match ESP32 firmware
+  final Guid serviceUuid = Guid('87e3a34b-5a54-40bb-9d6a-355b9237d42b');
+  final Guid temperatureCharacteristicUuid = Guid(
+    'cdc7651d-88bd-4c0d-8c90-4572db5aa14b',
+  );
+
   final StreamController<List<BleDeviceSummary>> _scanCtrl =
       StreamController.broadcast();
   final StreamController<BleConnectionState> _connCtrl =
@@ -30,16 +38,25 @@ class FlutterBluePlusRepository implements BleRepository {
     final Map<String, BleDeviceSummary> found = {};
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       for (final r in results) {
+        final adv = r.advertisementData;
+        if (!adv.serviceUuids.contains(serviceUuid)) {
+          continue;
+        }
         final d = r.device;
+        final name = d.platformName.isNotEmpty
+            ? d.platformName
+            : adv.localName.isNotEmpty
+            ? adv.localName
+            : 'SmartSpoon';
         found[d.remoteId.str] = BleDeviceSummary(
           id: d.remoteId.str,
-          name: d.platformName.isNotEmpty ? d.platformName : 'Unknown',
+          name: name,
           rssi: r.rssi,
         );
       }
       _scanCtrl.add(found.values.toList());
     });
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
+    await FlutterBluePlus.startScan(withServices: [serviceUuid]);
   }
 
   @override
@@ -53,7 +70,16 @@ class FlutterBluePlusRepository implements BleRepository {
   Future<void> connect(String deviceId) async {
     await stopScan();
     _device = BluetoothDevice.fromId(deviceId);
-    await _device!.connect(timeout: const Duration(seconds: 8));
+    print('BLE: Connecting to $deviceId');
+    try {
+      await _device!.connect(timeout: const Duration(seconds: 8));
+    } on PlatformException catch (e) {
+      // If already connected, continue to set up listeners/subscriptions
+      if (e.code != 'already_connected') rethrow;
+      print('BLE: already_connected, will proceed to subscribe');
+    } catch (_) {
+      rethrow;
+    }
     _connCtrl.add(const BleConnectionState(connected: true, mtu: null));
 
     _connSub?.cancel();
@@ -65,34 +91,76 @@ class FlutterBluePlusRepository implements BleRepository {
         _connCtrl.add(const BleConnectionState(connected: false, mtu: null));
       }
     });
+
+    // Ensure we are subscribed even if state was already connected
+    await _subscribeNotifications();
   }
 
   Future<void> _subscribeNotifications() async {
     if (_device == null) return;
     final services = await _device!.discoverServices();
-    // Nordic UART Service UUIDs (from PRD)
-    final nusService = Guid('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
-    // Assume notify characteristic contains sensor JSON; adjust as firmware defines
+
     for (final s in services) {
-      if (s.uuid == nusService) {
-        for (final c in s.characteristics) {
-          if (c.properties.notify) {
+      if (s.uuid != serviceUuid) continue;
+      print('BLE: Found target service $serviceUuid');
+      for (final c in s.characteristics) {
+        if (c.uuid == temperatureCharacteristicUuid) {
+          print(
+            'BLE: Found temperature characteristic $temperatureCharacteristicUuid',
+          );
+          // Attempt to enable notifications even if properties.notify is false.
+          try {
             await c.setNotifyValue(true);
-            _notifySub?.cancel();
-            _notifySub = c.onValueReceived.listen((data) {
+            print('BLE: setNotifyValue(true) called');
+          } catch (_) {}
+
+          _notifySub?.cancel();
+          _notifySub = c.onValueReceived.listen((data) {
+            if (data.isEmpty) return;
+            final now = DateTime.now();
+            final valueStr = utf8.decode(data, allowMalformed: true).trim();
+            print('BLE RX: $valueStr');
+            double? temp;
+            try {
+              final obj = jsonDecode(valueStr);
+              if (obj is Map && obj['food_temp'] != null) {
+                final dynamic v = obj['food_temp'];
+                if (v is num) temp = v.toDouble();
+                if (v is String) temp = double.tryParse(v);
+              }
+            } catch (_) {
+              temp = double.tryParse(valueStr);
+            }
+            _sensorCtrl.add(
+              BleSensorPacket(ts: now, temperatureC: temp, batteryPct: null),
+            );
+          });
+
+          // Perform an initial read to update UI immediately
+          try {
+            final data = await c.read();
+            if (data.isNotEmpty) {
+              final now = DateTime.now();
+              final valueStr = utf8.decode(data, allowMalformed: true).trim();
+              print('BLE initial read: $valueStr');
+              double? temp;
               try {
-                final now = DateTime.now();
-                // Very simple demo parse: temperature in first two bytes (little-endian, *0.1)
-                double? temp;
-                if (data.length >= 2) {
-                  final v = data[0] | (data[1] << 8);
-                  temp = v / 10.0;
+                final obj = jsonDecode(valueStr);
+                if (obj is Map && obj['food_temp'] != null) {
+                  final dynamic v = obj['food_temp'];
+                  if (v is num) temp = v.toDouble();
+                  if (v is String) temp = double.tryParse(v);
                 }
-                _sensorCtrl.add(BleSensorPacket(ts: now, temperatureC: temp));
-              } catch (_) {}
-            });
-            return;
-          }
+              } catch (_) {
+                temp = double.tryParse(valueStr);
+              }
+              _sensorCtrl.add(
+                BleSensorPacket(ts: now, temperatureC: temp, batteryPct: null),
+              );
+            }
+          } catch (_) {}
+
+          return;
         }
       }
     }

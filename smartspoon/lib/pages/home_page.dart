@@ -10,6 +10,7 @@ import 'package:smartspoon/features/insights/infrastructure/mock_insights_reposi
 import 'package:smartspoon/features/insights/presentation/insights_dashboard.dart';
 import 'package:smartspoon/pages/profile_page.dart';
 import 'package:smartspoon/state/user_provider.dart';
+import 'package:smartspoon/features/ble/application/ble_controller.dart';
 
 // HomePage widget serves as the main entry point for the app's home screen
 class HomePage extends StatefulWidget {
@@ -361,12 +362,18 @@ class TemperatureDisplay extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          TemperatureColumn(
-            icon: Icons.thermostat,
-            label: 'Food Temp',
-            temperature: '45°C',
-            color: const Color(0xFFFFA726),
-            fontSize: screenWidth * 0.07,
+          Consumer<BleController>(
+            builder: (context, controller, _) {
+              final t = controller.lastPacket?.temperatureC;
+              final formatted = t != null ? '${t.toStringAsFixed(1)}°C' : '--';
+              return TemperatureColumn(
+                icon: Icons.thermostat,
+                label: 'Food Temp',
+                temperature: formatted,
+                color: const Color(0xFFFFA726),
+                fontSize: screenWidth * 0.07,
+              );
+            },
           ),
           SizedBox(
             height: screenWidth * 0.2,

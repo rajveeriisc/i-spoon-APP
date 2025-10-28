@@ -7,6 +7,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart';
+import 'package:smartspoon/features/ble/application/ble_controller.dart';
+import 'package:smartspoon/features/ble/infrastructure/flutter_blue_plus_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +33,9 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(
+          create: (_) => BleController(FlutterBluePlusRepository())..init(),
+        ),
       ],
       child: const MyApp(),
     ),

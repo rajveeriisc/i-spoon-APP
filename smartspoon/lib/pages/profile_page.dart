@@ -4,6 +4,7 @@ import 'package:smartspoon/pages/edit_profile_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:smartspoon/pages/login_screen.dart';
 import 'package:smartspoon/services/auth_service.dart';
+import 'package:smartspoon/services/firebase_auth_service.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/state/user_provider.dart';
 import 'package:smartspoon/main.dart';
@@ -45,15 +46,29 @@ class ProfilePage extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () async {
+                // 1) Sign out of Firebase + Google
+                try {
+                  final fb = FirebaseAuthService();
+                  await fb.signOut();
+                } catch (_) {}
+
+                // 2) Clear backend JWT
                 try {
                   await AuthService.logout();
-                } catch (_) {
-                  // ignore storage errors on web
+                } catch (_) {}
+
+                // 3) Clear local user state
+                if (context.mounted) {
+                  Provider.of<UserProvider>(context, listen: false).clear();
                 }
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
+
+                // 4) Navigate to Login (wipe stack)
+                if (context.mounted) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
+                }
               },
               icon: const Icon(Icons.logout),
               label: const Text('Logout'),
