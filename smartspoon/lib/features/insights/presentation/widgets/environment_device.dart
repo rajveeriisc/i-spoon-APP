@@ -21,8 +21,8 @@ class EnvironmentDevice extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withAlpha(100)
-                : Colors.grey.withAlpha(40),
+                ? Colors.black.withValues(alpha: 0.39)
+                : Colors.grey.withValues(alpha: 0.16),
             blurRadius: 10,
             offset: const Offset(0, 6),
           ),

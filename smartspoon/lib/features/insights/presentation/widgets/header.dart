@@ -40,7 +40,7 @@ class HeaderSection extends StatelessWidget {
                   'Last updated: just now',
                   style: GoogleFonts.lato(
                     fontSize: 14,
-                    color: Colors.white.withAlpha(180),
+                    color: Colors.white.withValues(alpha: 0.71),
                   ),
                 ),
               ],

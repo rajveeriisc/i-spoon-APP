@@ -149,26 +149,26 @@ export const getResetPasswordPage = (token = "") => {
         mh.style.color = ok ? 'var(--ok)' : 'var(--err)';
         return ok;
       };
-        const setTokenFrag = () => {
-          const t = token.value || '';
-          const frag = t.length > 12 ? (t.slice(0,6) + '...' + t.slice(-6)) : t;
-          $("tokenFrag").textContent = frag;
-        };
-        setTokenFrag();
+      const setTokenFrag = () => {
+        const t = token.value || '';
+        const frag = t.length > 12 ? (t.slice(0,6) + '...' + t.slice(-6)) : t;
+        $("tokenFrag").textContent = frag;
+      };
+      setTokenFrag();
 
-        // Generate CSRF token
-        const generateCSRFToken = () => {
-          const array = new Uint8Array(32);
-          crypto.getRandomValues(array);
-          return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
-        };
+      // Generate CSRF token
+      const generateCSRFToken = () => {
+        const array = new Uint8Array(32);
+        crypto.getRandomValues(array);
+        return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+      };
 
-        // Set CSRF token
-        const csrfToken = $("csrfToken");
-        csrfToken.value = generateCSRFToken();
+      // Set CSRF token
+      const csrfToken = $("csrfToken");
+      csrfToken.value = generateCSRFToken();
 
-        // Set CSRF cookie with SameSite protection
-        document.cookie = `csrfToken=${csrfToken.value}; SameSite=Strict; Secure; Path=/api/auth/reset`;
+      // Set CSRF cookie with SameSite protection
+      document.cookie = "csrfToken=" + csrfToken.value + "; SameSite=Strict; Secure; Path=/api/auth/reset";
 
       pw.addEventListener('input', ()=>{ validate(); match(); });
       cf.addEventListener('input', match);

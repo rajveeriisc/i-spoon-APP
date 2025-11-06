@@ -147,6 +147,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false, // Remove back arrow
         toolbarHeight: _appBarToolbarHeight(screenWidth),
         titleSpacing: 0,
         title: Padding(
@@ -261,8 +262,8 @@ class SpoonConnectedCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDarkMode
-                ? Colors.black.withAlpha(100)
-                : Colors.grey.withAlpha(50),
+                ? Colors.black.withValues(alpha: 0.39)
+                : Colors.grey.withValues(alpha: 0.20),
             spreadRadius: 2,
             blurRadius: 10,
             offset: const Offset(0, 5),
@@ -351,8 +352,8 @@ class TemperatureDisplay extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDarkMode
-                ? Colors.black.withAlpha(100)
-                : Colors.grey.withAlpha(30),
+                ? Colors.black.withValues(alpha: 0.39)
+                : Colors.grey.withValues(alpha: 0.12),
             spreadRadius: 2,
             blurRadius: 10,
             offset: const Offset(0, 5),
@@ -378,7 +379,7 @@ class TemperatureDisplay extends StatelessWidget {
           SizedBox(
             height: screenWidth * 0.2,
             child: VerticalDivider(
-              color: Colors.grey.withAlpha(50),
+              color: Colors.grey.withValues(alpha: 0.20),
               thickness: 2,
             ),
           ),
@@ -419,7 +420,7 @@ class TemperatureColumn extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(fontSize * 0.3),
           decoration: BoxDecoration(
-            color: color.withAlpha(30),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, size: fontSize * 0.8, color: color),
@@ -459,8 +460,8 @@ class EatingAnalysisCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDarkMode
-                ? Colors.black.withAlpha(100)
-                : Colors.grey.withAlpha(30),
+                ? Colors.black.withValues(alpha: 0.39)
+                : Colors.grey.withValues(alpha: 0.12),
             spreadRadius: 2,
             blurRadius: 10,
             offset: const Offset(0, 5),
@@ -641,7 +642,7 @@ class InfoColumn extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(screenWidth * 0.04),
           decoration: BoxDecoration(
-            color: iconColor.withAlpha(50),
+            color: iconColor.withValues(alpha: 0.20),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, size: screenWidth * 0.1, color: iconColor),
@@ -675,6 +676,7 @@ class MyDevices extends StatefulWidget {
 class _MyDevicesState extends State<MyDevices> {
   List<BluetoothDevice> _connected = const [];
   List<_RecentDevice> _recent = const [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -691,16 +693,33 @@ class _MyDevicesState extends State<MyDevices> {
           .map((s) => _RecentDevice.fromString(s))
           .whereType<_RecentDevice>()
           .toList();
-      setState(() {
-        _connected = connected;
-        _recent = parsed;
-      });
-    } catch (_) {}
+      
+      // Check if widget is still mounted before calling setState
+      if (mounted) {
+        setState(() {
+          _connected = connected;
+          _recent = parsed;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading devices: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
     final connectedIds = _connected.map((d) => d.remoteId.toString()).toSet();
     final recentNotConnected = _recent
         .where((r) => !connectedIds.contains(r.id))
@@ -803,8 +822,8 @@ class DeviceCard extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: isDarkMode
-                    ? Colors.black.withAlpha(100)
-                    : Colors.grey.withAlpha(30),
+                    ? Colors.black.withValues(alpha: 0.39)
+                    : Colors.grey.withValues(alpha: 0.12),
                 spreadRadius: 2,
                 blurRadius: 10,
                 offset: const Offset(0, 5),

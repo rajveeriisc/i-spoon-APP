@@ -109,7 +109,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(50),
+                      color: Colors.white.withValues(alpha: 0.20),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(

@@ -8,6 +8,11 @@ import 'package:smartspoon/features/ble/presentation/recent_section.dart';
 import 'package:smartspoon/features/ble/presentation/connected_carousel.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/ble/application/ble_controller.dart';
+import 'package:smartspoon/features/ble/presentation/add_device/widgets/scan_header.dart';
+import 'package:smartspoon/features/ble/presentation/add_device/widgets/filter_chips.dart'
+    as filter;
+import 'package:smartspoon/features/ble/presentation/add_device/widgets/device_card.dart'
+    as cards;
 
 class AddDeviceScreen extends StatefulWidget {
   const AddDeviceScreen({super.key});
@@ -166,69 +171,28 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
       return;
     }
 
-    setState(() {
-      _isScanning = true;
-      _scanResults.clear();
-    });
-
+    // Start animation
+    setState(() => _isScanning = true);
     _animationController.repeat();
 
     try {
-      // Listen to scan results
-      _scanSubscription = FlutterBluePlus.onScanResults.listen(
-        (results) {
-          setState(() {
-            // Update or add new devices
-            for (var result in results) {
-              final index = _scanResults.indexWhere(
-                (r) => r.device.remoteId == result.device.remoteId,
-              );
-              if (index >= 0) {
-                _scanResults[index] = result;
-              } else {
-                _scanResults.add(result);
-              }
-            }
-            // Sort by RSSI (signal strength)
-            _scanResults.sort((a, b) => b.rssi.compareTo(a.rssi));
-          });
-        },
-        onError: (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Scan error: $e'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        },
-      );
-
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
-
-      // Wait for scan to complete
-      await FlutterBluePlus.isScanning.where((val) => val == false).first;
-
-      if (mounted) {
-        setState(() {
-          _isScanning = false;
-        });
-        _animationController.stop();
-        _animationController.reset();
-      }
+      // Delegate scan to controller (repository handles service filtering)
+      final ctrl = context.read<BleController>();
+      await ctrl.startScan();
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isScanning = false;
-        });
-        _animationController.stop();
-        _animationController.reset();
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to start scan: $e'),
             backgroundColor: Colors.redAccent,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isScanning = false);
+        _animationController.stop();
+        _animationController.reset();
       }
     }
   }
@@ -364,9 +328,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
     } catch (_) {}
   }
 
-  bool _isDeviceConnected(BluetoothDevice device) {
-    return _connectedDevices.any((d) => d.remoteId == device.remoteId);
-  }
+  // kept for future use if needed – currently connection state is sourced from controller
 
   @override
   Widget build(BuildContext context) {
@@ -392,7 +354,16 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildHeader(context),
+              Consumer<BleController>(
+                builder: (context, ctrl, _) {
+                  final isScanning = ctrl.isScanning || _isScanning;
+                  return ScanHeader(
+                    isScanning: isScanning,
+                    onScan: _startScan,
+                    turns: _animationController,
+                  );
+                },
+              ),
               const SizedBox(height: 16),
 
               const SizedBox(height: 24),
@@ -403,38 +374,51 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                   onDisconnect: (d) => _disconnectDevice(d),
                 ),
 
-              _buildFilterChips(context),
+              filter.FilterChips(
+                filterIndex: _filterIndex,
+                onChanged: (idx) => setState(() => _filterIndex = idx),
+              ),
               const SizedBox(height: 8),
               _buildNearbyHeader(context),
               const SizedBox(height: 12),
 
-              if (_scanResults.isEmpty && !_isScanning)
-                _buildEmptyState(context),
-
-              if (_scanResults.isNotEmpty)
-                ..._scanResults.map((result) {
-                  final device = result.device;
-                  final isConnected = _isDeviceConnected(device);
-                  if (_filterIndex == 2 && !isConnected) {
-                    return const SizedBox.shrink();
+              Consumer<BleController>(
+                builder: (context, ctrl, _) {
+                  final list = ctrl.devices;
+                  if (list.isEmpty && !_isScanning) {
+                    return _buildEmptyState(context);
                   }
-                  if (_filterIndex == 1 && isConnected) {
-                    return const SizedBox.shrink();
-                  }
-                  return _ModernDeviceCard(
-                    name: device.platformName.isNotEmpty
-                        ? device.platformName
-                        : 'Unknown Device',
-                    id: device.remoteId.toString(),
-                    rssi: result.rssi,
-                    connected: isConnected,
-                    onTap: () => _showDeviceSheet(
-                      device: device,
-                      rssi: result.rssi,
-                      connected: isConnected,
-                    ),
+                  return Column(
+                    children: list.map((d) {
+                      final isConnected = ctrl.isDeviceConnected(d.id);
+                      if (_filterIndex == 2 && !isConnected) {
+                        return const SizedBox.shrink();
+                      }
+                      if (_filterIndex == 1 && isConnected) {
+                        return const SizedBox.shrink();
+                      }
+                      return cards.DeviceCard(
+                        name: d.name.isNotEmpty ? d.name : 'Unknown Device',
+                        id: d.id,
+                        rssi: d.rssi,
+                        connected: isConnected,
+                        onTap: () async {
+                          // Show sheet requires BluetoothDevice; keep existing flow via scan results if available
+                          try {
+                            final dev = BluetoothDevice.fromId(d.id);
+                            int rssi = d.rssi;
+                            _showDeviceSheet(
+                              device: dev,
+                              rssi: rssi,
+                              connected: isConnected,
+                            );
+                          } catch (_) {}
+                        },
+                      );
+                    }).toList(),
                   );
-                }),
+                },
+              ),
 
               // Previously connected devices
               RecentSection(
@@ -450,105 +434,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
       ),
     );
   }
-
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withAlpha(40),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withAlpha(36),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.bluetooth_searching,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Add an i-Spoon',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Scan nearby and connect to start tracking.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withAlpha(180),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: _isScanning ? null : _startScan,
-            icon: _isScanning
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : RotationTransition(
-                    turns: _animationController,
-                    child: const Icon(Icons.sync),
-                  ),
-            label: Text(_isScanning ? 'Scanning' : 'Scan'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // _buildStatusChips removed per request; Scan button covers the state
-
-  Widget _buildFilterChips(BuildContext context) {
-    InputChip filter(String label, int idx) => InputChip(
-      label: Text(label),
-      selected: _filterIndex == idx,
-      onSelected: (_) => setState(() => _filterIndex = idx),
-    );
-    return Row(
-      children: [
-        filter('All', 0),
-        const SizedBox(width: 8),
-        filter('Nearby', 1),
-        const SizedBox(width: 8),
-        filter('Connected', 2),
-      ],
-    );
-  }
-
-  // connected carousel moved to ConnectedCarousel widget
-
-  // recent section moved to RecentSection widget
 
   Widget _buildNearbyHeader(BuildContext context) {
     final count = _scanResults.length;
@@ -584,7 +469,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withAlpha(40),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.16),
         ),
       ),
       child: Column(
@@ -592,7 +477,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
           Icon(
             Icons.bluetooth_disabled,
             size: 48,
-            color: Theme.of(context).colorScheme.onSurface.withAlpha(120),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.47),
           ),
           const SizedBox(height: 12),
           Text(
@@ -608,7 +495,9 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
-              color: Theme.of(context).colorScheme.onSurface.withAlpha(160),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.63),
             ),
           ),
         ],
@@ -642,7 +531,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                     decoration: BoxDecoration(
                       color: Theme.of(
                         context,
-                      ).colorScheme.primary.withAlpha(36),
+                      ).colorScheme.primary.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -669,7 +558,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                           style: TextStyle(
                             color: Theme.of(
                               context,
-                            ).colorScheme.onSurface.withAlpha(160),
+                            ).colorScheme.onSurface.withValues(alpha: 0.63),
                           ),
                         ),
                       ],
@@ -704,8 +593,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   }
 }
 
-// connected card moved to ConnectedCarousel widget
-
 class _SignalBars extends StatelessWidget {
   final int rssi;
   const _SignalBars({required this.rssi});
@@ -723,7 +610,9 @@ class _SignalBars extends StatelessWidget {
       level = 1;
     }
     Color active = Theme.of(context).colorScheme.primary;
-    Color inactive = Theme.of(context).colorScheme.onSurface.withAlpha(60);
+    Color inactive = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.24);
     return Row(
       children: List.generate(4, (i) {
         return Padding(
@@ -738,75 +627,6 @@ class _SignalBars extends StatelessWidget {
           ),
         );
       }),
-    );
-  }
-}
-
-class _ModernDeviceCard extends StatelessWidget {
-  final String name;
-  final String id;
-  final int rssi;
-  final bool connected;
-  final VoidCallback onTap;
-  const _ModernDeviceCard({
-    required this.name,
-    required this.id,
-    required this.rssi,
-    required this.connected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withAlpha(40),
-        ),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color:
-                (connected
-                        ? Colors.teal
-                        : Theme.of(context).colorScheme.primary)
-                    .withAlpha(36),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            connected ? Icons.bluetooth_connected : Icons.bluetooth,
-            color: connected
-                ? Colors.teal
-                : Theme.of(context).colorScheme.primary,
-          ),
-        ),
-        title: Text(
-          name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Row(
-          children: [
-            Expanded(
-              child: Text(id, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-            const SizedBox(width: 8),
-            _SignalBars(rssi: rssi),
-          ],
-        ),
-        trailing: Icon(
-          Icons.chevron_right,
-          color: Theme.of(context).colorScheme.onSurface.withAlpha(160),
-        ),
-      ),
     );
   }
 }

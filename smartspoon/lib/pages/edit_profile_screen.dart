@@ -132,7 +132,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     };
 
     try {
-      await AuthService.updateProfile(data: payload).timeout(
+      // updateProfile response already contains the updated user data
+      final res = await AuthService.updateProfile(data: payload).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
           throw Exception('Update timeout - check backend connection');
@@ -141,22 +142,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (!mounted) return;
 
-      // Fetch updated user data and update global state
-      try {
-        final res = await AuthService.getMe().timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            throw Exception('Fetch timeout');
-          },
-        );
-        if (res['user'] != null && mounted) {
-          Provider.of<UserProvider>(
-            context,
-            listen: false,
-          ).setFromMap(res['user'] as Map<String, dynamic>);
-        }
-      } catch (e) {
-        // Silently ignore if fetching fails
+      // Use the response directly instead of making another API call
+      if (res['user'] != null) {
+        Provider.of<UserProvider>(
+          context,
+          listen: false,
+        ).setFromMap(res['user'] as Map<String, dynamic>);
       }
 
       if (!mounted) return;

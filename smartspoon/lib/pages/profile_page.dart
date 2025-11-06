@@ -174,41 +174,87 @@ class UserInfoCard extends StatelessWidget {
 // Avatar upload helpers
 Future<void> _pickAndUpload(BuildContext context, ImageSource source) async {
   final picker = ImagePicker();
-  final XFile? file = await picker.pickImage(
-    source: source,
-    imageQuality: 85,
-    maxWidth: 1024,
-  );
-  if (file == null) return;
-  final bytes = await file.readAsBytes();
+  
+  // Show loading indicator
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 16),
+            Text('Uploading photo...'),
+          ],
+        ),
+        duration: Duration(hours: 1), // Will be dismissed manually
+      ),
+    );
+  }
+  
   try {
+    final XFile? file = await picker.pickImage(
+      source: source,
+      imageQuality: 80, // Reduced for smaller file size
+      maxWidth: 512, // Reduced from 1024 for avatars
+      maxHeight: 512,
+    );
+    
+    if (file == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+      }
+      return;
+    }
+    
+    final bytes = await file.readAsBytes();
+    
+    // Check file size (should be under 2MB after compression)
+    if (bytes.length > 2 * 1024 * 1024) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image too large. Please choose a smaller image.')),
+        );
+      }
+      return;
+    }
+    
     final resp = await AuthService.uploadAvatar(
       bytes: bytes,
       filename: file.name,
     );
+    
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    
     final user = resp['user'] as Map<String, dynamic>?;
-    if (user != null && context.mounted) {
+    if (user != null) {
       final updated = Map<String, dynamic>.from(user);
       final url = updated['avatar_url'];
       if (url is String && url.isNotEmpty) {
-        updated['avatar_url'] =
-            '$url?v=${DateTime.now().millisecondsSinceEpoch}';
+        updated['avatar_url'] = '$url?v=${DateTime.now().millisecondsSinceEpoch}';
       }
       Provider.of<UserProvider>(context, listen: false).setFromMap(updated);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Profile photo updated')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile photo updated')),
+      );
     }
   } on AuthException catch (e) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(e.message)));
-  } catch (_) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(e.message)),
+    );
+  } catch (e) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Upload failed')));
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Upload failed: ${e.toString()}')),
+    );
   }
 }
 

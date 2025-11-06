@@ -19,12 +19,39 @@ const shouldUseSSL = (() => {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
+  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false, // TODO: Enable certificate validation in production
+  // Connection pool configuration
+  max: 20, // Maximum pool size
+  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+  connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
 });
 
-// Log and avoid crashing on idle client errors
-pool.on("error", (err) => {
+// Handle idle client errors and attempt recovery
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+const baseReconnectDelay = 1000; // 1 second
+
+pool.on("error", async (err) => {
   console.error("❌ Postgres pool error (idle client):", err.message);
+  
+  // Attempt to recover connection
+  if (reconnectAttempts < maxReconnectAttempts) {
+    reconnectAttempts++;
+    const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts - 1); // Exponential backoff
+    console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+    
+    setTimeout(async () => {
+      try {
+        await pool.query("SELECT 1");
+        console.log("✅ Database connection recovered");
+        reconnectAttempts = 0; // Reset counter on success
+      } catch (retryErr) {
+        console.error("❌ Reconnection failed:", retryErr.message);
+      }
+    }, delay);
+  } else {
+    console.error("❌ Max reconnection attempts reached. Manual intervention required.");
+  }
 });
 
 // Lightweight startup health check without holding a client

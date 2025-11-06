@@ -2,9 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import '../domain/ble_repository.dart';
 import '../domain/models.dart';
 
+/// BLE repository implementation using flutter_blue_plus
+/// Handles device scanning, connection, and sensor data streaming
 class FlutterBluePlusRepository implements BleRepository {
   // Updated to match ESP32 firmware
   final Guid serviceUuid = Guid('87e3a34b-5a54-40bb-9d6a-355b9237d42b');
@@ -23,6 +26,10 @@ class FlutterBluePlusRepository implements BleRepository {
   StreamSubscription? _scanSub;
   StreamSubscription? _connSub;
   StreamSubscription? _notifySub;
+
+  // Prevent concurrent subscription attempts
+  bool _isSubscribing = false;
+  bool _isDisposed = false;
 
   @override
   Stream<List<BleDeviceSummary>> get scan$ => _scanCtrl.stream;
@@ -96,73 +103,111 @@ class FlutterBluePlusRepository implements BleRepository {
     await _subscribeNotifications();
   }
 
+  /// Subscribe to BLE notifications from the temperature characteristic
+  /// Prevents concurrent subscriptions and includes proper timeout handling
   Future<void> _subscribeNotifications() async {
-    if (_device == null) return;
-    final services = await _device!.discoverServices();
+    if (_device == null || _isDisposed) return;
 
-    for (final s in services) {
-      if (s.uuid != serviceUuid) continue;
-      print('BLE: Found target service $serviceUuid');
-      for (final c in s.characteristics) {
-        if (c.uuid == temperatureCharacteristicUuid) {
-          print(
-            'BLE: Found temperature characteristic $temperatureCharacteristicUuid',
-          );
-          // Attempt to enable notifications even if properties.notify is false.
-          try {
-            await c.setNotifyValue(true);
-            print('BLE: setNotifyValue(true) called');
-          } catch (_) {}
+    // Prevent concurrent subscription attempts
+    if (_isSubscribing) {
+      debugPrint('BLE: Subscription already in progress, skipping');
+      return;
+    }
 
-          _notifySub?.cancel();
-          _notifySub = c.onValueReceived.listen((data) {
-            if (data.isEmpty) return;
-            final now = DateTime.now();
-            final valueStr = utf8.decode(data, allowMalformed: true).trim();
-            print('BLE RX: $valueStr');
-            double? temp;
-            try {
-              final obj = jsonDecode(valueStr);
-              if (obj is Map && obj['food_temp'] != null) {
-                final dynamic v = obj['food_temp'];
-                if (v is num) temp = v.toDouble();
-                if (v is String) temp = double.tryParse(v);
-              }
-            } catch (_) {
-              temp = double.tryParse(valueStr);
-            }
-            _sensorCtrl.add(
-              BleSensorPacket(ts: now, temperatureC: temp, batteryPct: null),
+    _isSubscribing = true;
+
+    try {
+      final services = await _device!.discoverServices().timeout(
+        const Duration(seconds: 10),
+      );
+
+      for (final s in services) {
+        if (s.uuid != serviceUuid) continue;
+        debugPrint('BLE: Found target service $serviceUuid');
+
+        for (final c in s.characteristics) {
+          if (c.uuid == temperatureCharacteristicUuid) {
+            debugPrint(
+              'BLE: Found temperature characteristic $temperatureCharacteristicUuid',
             );
-          });
 
-          // Perform an initial read to update UI immediately
-          try {
-            final data = await c.read();
-            if (data.isNotEmpty) {
-              final now = DateTime.now();
-              final valueStr = utf8.decode(data, allowMalformed: true).trim();
-              print('BLE initial read: $valueStr');
-              double? temp;
-              try {
-                final obj = jsonDecode(valueStr);
-                if (obj is Map && obj['food_temp'] != null) {
-                  final dynamic v = obj['food_temp'];
-                  if (v is num) temp = v.toDouble();
-                  if (v is String) temp = double.tryParse(v);
-                }
-              } catch (_) {
-                temp = double.tryParse(valueStr);
-              }
-              _sensorCtrl.add(
-                BleSensorPacket(ts: now, temperatureC: temp, batteryPct: null),
-              );
+            // Cancel existing subscription before creating new one
+            await _notifySub?.cancel();
+            _notifySub = null;
+
+            // Attempt to enable notifications
+            try {
+              await c.setNotifyValue(true).timeout(const Duration(seconds: 5));
+              debugPrint('BLE: Notifications enabled successfully');
+            } catch (e) {
+              debugPrint('BLE: Failed to enable notifications: $e');
+              // Continue anyway - some devices work without explicit notify enable
             }
-          } catch (_) {}
 
-          return;
+            _notifySub = c.onValueReceived.listen(
+              (data) {
+                if (data.isEmpty || _isDisposed) return;
+                _handleSensorData(data);
+              },
+              onError: (error) {
+                debugPrint('BLE: Notification stream error: $error');
+              },
+              cancelOnError: false,
+            );
+
+            // Perform an initial read to update UI immediately
+            try {
+              final data = await c.read().timeout(const Duration(seconds: 3));
+              if (data.isNotEmpty && !_isDisposed) {
+                _handleSensorData(data);
+              }
+            } catch (e) {
+              debugPrint('BLE: Initial read failed: $e');
+            }
+
+            return;
+          }
         }
       }
+
+      debugPrint('BLE: Temperature characteristic not found');
+    } catch (e) {
+      debugPrint('BLE: Failed to subscribe to notifications: $e');
+    } finally {
+      _isSubscribing = false;
+    }
+  }
+
+  /// Parse and handle incoming sensor data
+  void _handleSensorData(List<int> data) {
+    try {
+      final now = DateTime.now();
+      final valueStr = utf8.decode(data, allowMalformed: true).trim();
+      debugPrint('BLE RX: $valueStr');
+
+      double? temp;
+      try {
+        final obj = jsonDecode(valueStr);
+        if (obj is Map && obj['food_temp'] != null) {
+          final dynamic v = obj['food_temp'];
+          if (v is num) {
+            temp = v.toDouble();
+          } else if (v is String) {
+            temp = double.tryParse(v);
+          }
+        }
+      } catch (_) {
+        // Fallback: try parsing as plain number
+        temp = double.tryParse(valueStr);
+      }
+
+      if (!_isDisposed) {
+        _sensorCtrl.add(
+          BleSensorPacket(ts: now, temperatureC: temp, batteryPct: null),
+        );
+      }
+    } catch (e) {
+      debugPrint('BLE: Error handling sensor data: $e');
     }
   }
 
@@ -191,9 +236,47 @@ class FlutterBluePlusRepository implements BleRepository {
     }
   }
 
-  void dispose() {
-    _scanCtrl.close();
-    _connCtrl.close();
-    _sensorCtrl.close();
+  /// Dispose of all resources and clean up connections
+  /// Must be called when the repository is no longer needed
+  @override
+  Future<void> dispose() async {
+    if (_isDisposed) return;
+    _isDisposed = true;
+
+    debugPrint('BLE: Disposing repository');
+
+    // Stop scanning first
+    try {
+      await FlutterBluePlus.stopScan();
+    } catch (e) {
+      debugPrint('BLE: Error stopping scan: $e');
+    }
+
+    // Cancel all subscriptions
+    await _scanSub?.cancel();
+    _scanSub = null;
+
+    await _notifySub?.cancel();
+    _notifySub = null;
+
+    await _connSub?.cancel();
+    _connSub = null;
+
+    // Disconnect device
+    if (_device != null) {
+      try {
+        await _device!.disconnect();
+      } catch (e) {
+        debugPrint('BLE: Error disconnecting device: $e');
+      }
+      _device = null;
+    }
+
+    // Close stream controllers last
+    await _scanCtrl.close();
+    await _connCtrl.close();
+    await _sensorCtrl.close();
+
+    debugPrint('BLE: Repository disposed');
   }
 }

@@ -125,42 +125,6 @@ class _IconContainer extends StatelessWidget {
   }
 }
 
-class _SpoonInfo extends StatelessWidget {
-  const _SpoonInfo();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
-        Text(
-          'Spoon Connected',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF00838F),
-          ),
-        ),
-        SizedBox(height: 8),
-        Row(
-          children: [
-            Icon(
-              Icons.battery_charging_full,
-              size: 20,
-              color: Color(0xFF00838F),
-            ),
-            SizedBox(width: 8),
-            Text(
-              '85%',
-              style: TextStyle(fontSize: 16, color: Color(0xFF00838F)),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
 class TemperatureDisplay extends StatelessWidget {
   const TemperatureDisplay({super.key});
 
@@ -169,7 +133,7 @@ class TemperatureDisplay extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final dividerColor = Theme.of(context).brightness == Brightness.dark
         ? Colors.white24
-        : Colors.grey.withAlpha(50);
+        : Colors.grey.withValues(alpha: 0.20);
 
     return AppCard(
       padding: EdgeInsets.all(screenWidth * 0.05),
@@ -232,7 +196,7 @@ class TemperatureColumn extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(fontSize * 0.3),
           decoration: BoxDecoration(
-            color: color.withAlpha(30),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, size: fontSize * 0.8, color: color),
@@ -325,7 +289,7 @@ class InfoColumn extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(screenWidth * 0.04),
           decoration: BoxDecoration(
-            color: iconColor.withAlpha(50),
+            color: iconColor.withValues(alpha: 0.20),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, size: screenWidth * 0.1, color: iconColor),

@@ -24,8 +24,8 @@ class TemperatureSection extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withAlpha(100)
-                : Colors.grey.withAlpha(40),
+                ? Colors.black.withValues(alpha: 0.39)
+                : Colors.grey.withValues(alpha: 0.16),
             blurRadius: 10,
             offset: const Offset(0, 6),
           ),
@@ -89,7 +89,7 @@ class _TempGauge extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: color.withAlpha(20),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(Icons.thermostat, color: color),

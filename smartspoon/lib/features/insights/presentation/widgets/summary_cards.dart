@@ -90,8 +90,8 @@ class _SummaryCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withAlpha(100)
-                : Colors.grey.withAlpha(40),
+                ? Colors.black.withValues(alpha: 0.39)
+                : Colors.grey.withValues(alpha: 0.16),
             blurRadius: 10,
             offset: const Offset(0, 6),
           ),
@@ -102,7 +102,7 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: color.withAlpha(30),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             padding: const EdgeInsets.all(10),

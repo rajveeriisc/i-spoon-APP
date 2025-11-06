@@ -170,7 +170,7 @@ class FirebaseAuthService {
       case 'invalid-email':
         return 'Invalid email address.';
       case 'weak-password':
-        return 'Password should be at least 6 characters.';
+        return 'Password must be at least 8 characters with uppercase, lowercase, number, and special character.';
       case 'user-disabled':
         return 'This account has been disabled.';
       default:

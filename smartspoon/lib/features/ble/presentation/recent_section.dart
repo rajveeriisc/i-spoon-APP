@@ -45,7 +45,7 @@ class RecentSection extends StatelessWidget {
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).colorScheme.outline.withAlpha(40),
+                color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.16),
               ),
             ),
             child: ListTile(

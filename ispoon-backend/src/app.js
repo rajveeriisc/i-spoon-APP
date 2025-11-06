@@ -3,12 +3,15 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
+import crypto from "crypto";
 import dotenv from "dotenv";
 import authRoutes from "./modules/auth/routes.js";
 import userRoutes from "./modules/users/routes.js";
 import path from "path";
 import { handleError, errorMiddleware } from "./utils/errorHandler.js";
 import { SECURITY_CONFIG, validateSecurityConfig } from "./config/security.js";
+import { pool } from "./config/db.js";
+import { getFirebaseAdmin } from "./config/firebaseAdmin.js";
 
 dotenv.config();
 
@@ -76,6 +79,53 @@ const generalLimiter = rateLimit({
 // Default route
 app.get("/", (req, res) => {
   res.send("🥄 iSpoon Backend API Running with NeonDB & CORS ✅");
+});
+
+// CSRF token generation endpoint
+app.get("/api/auth/csrf", (req, res) => {
+  const token = crypto.randomBytes(32).toString('hex');
+  res.cookie('csrfToken', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  });
+  res.json({ csrfToken: token });
+});
+
+// Health check endpoint
+app.get("/api/health", async (req, res) => {
+  const health = {
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    services: {
+      database: "unknown",
+      firebase: "unknown"
+    }
+  };
+  
+  // Check database connection
+  try {
+    await pool.query("SELECT 1");
+    health.services.database = "ok";
+  } catch (err) {
+    health.services.database = "error";
+    health.status = "degraded";
+  }
+  
+  // Check Firebase Admin initialization
+  try {
+    const admin = getFirebaseAdmin();
+    if (admin) {
+      health.services.firebase = "ok";
+    }
+  } catch (err) {
+    health.services.firebase = "error";
+    health.status = "degraded";
+  }
+  
+  res.status(health.status === "ok" ? 200 : 503).json(health);
 });
 
 // Apply general rate limiting to all routes

@@ -82,7 +82,7 @@ class _ConnectedCard extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withAlpha(40),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.16),
         ),
       ),
       child: Column(
@@ -94,7 +94,7 @@ class _ConnectedCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withAlpha(36),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -120,7 +120,7 @@ class _ConnectedCard extends StatelessWidget {
                       style: TextStyle(
                         color: Theme.of(
                           context,
-                        ).colorScheme.onSurface.withAlpha(160),
+                        ).colorScheme.onSurface.withValues(alpha: 0.63),
                         fontSize: 12,
                       ),
                     ),

@@ -99,8 +99,8 @@ class DailyFoodTimeline extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withAlpha(100)
-                : Colors.grey.withAlpha(40),
+                ? Colors.black.withValues(alpha: 0.39)
+                : Colors.grey.withValues(alpha: 0.16),
             blurRadius: 10,
             offset: const Offset(0, 6),
           ),
@@ -225,7 +225,7 @@ class DailyFoodTimeline extends StatelessWidget {
                       show: true,
                       gradient: LinearGradient(
                         colors: [
-                          const Color(0xFF007AFF).withAlpha(60),
+                          const Color(0xFF007AFF).withValues(alpha: 0.24),
                           Colors.transparent,
                         ],
                         begin: Alignment.topCenter,
@@ -243,7 +243,7 @@ class DailyFoodTimeline extends StatelessWidget {
                       show: true,
                       gradient: LinearGradient(
                         colors: [
-                          const Color(0xFFFFB100).withAlpha(60),
+                          const Color(0xFFFFB100).withValues(alpha: 0.24),
                           Colors.transparent,
                         ],
                         begin: Alignment.topCenter,

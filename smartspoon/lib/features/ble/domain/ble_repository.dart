@@ -11,4 +11,5 @@ abstract class BleRepository {
   Future<void> connect(String deviceId);
   Future<void> disconnect();
   Future<void> requestMtu(int mtu);
+  Future<void> dispose();
 }
