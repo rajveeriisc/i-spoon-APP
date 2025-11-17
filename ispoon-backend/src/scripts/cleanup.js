@@ -16,8 +16,6 @@ function parseMs(input, fallbackMs) {
 async function cleanupOldData() {
   try {
     console.log("Starting data cleanup...");
-
-    // Clean up old password reset tokens with configurable retention
     const retentionMs = parseMs(process.env.RESET_TOKEN_RETENTION || "24h", 24 * 3600 * 1000);
     const { rowCount: resetTokensCleaned } = await pool.query(
       `UPDATE users SET reset_token = NULL, reset_token_expires_at = NULL
@@ -25,17 +23,6 @@ async function cleanupOldData() {
       [retentionMs]
     );
     console.log(`Cleaned ${resetTokensCleaned} expired password reset tokens`);
-
-    // Clean up users with no recent activity (optional - uncomment if needed)
-    // const { rowCount: oldUsersCleaned } = await pool.query(
-    //   `DELETE FROM users WHERE created_at < NOW() - INTERVAL '1 year'
-    //    AND last_login_at < NOW() - INTERVAL '6 months'`
-    // );
-    // console.log(`Cleaned ${oldUsersCleaned} inactive users`);
-
-    // Clean up old avatar files (if any exist)
-    // This would require file system access, implement if needed
-
     console.log("✅ Data cleanup completed successfully");
     process.exit(0);
   } catch (error) {

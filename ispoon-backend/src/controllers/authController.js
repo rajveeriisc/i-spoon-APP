@@ -4,6 +4,7 @@ import crypto from "crypto";
 import dotenv from "dotenv";
 import { createUser, getUserByEmail, setResetTokenForUser, getUserByResetToken, clearResetTokenAndSetPassword } from "../models/userModel.js";
 import { sendFirebasePasswordResetEmail } from "../emails/firebase.js";
+import { SECURITY_CONFIG } from "../config/security.js";
 import {
   sanitizeEmail,
   validateSignup,
@@ -50,9 +51,18 @@ export const login = async (req, res) => {
     if (!match) return res.status(400).json({ message: "Invalid credentials" });
 
     const token = jwt.sign(
-      { id: user.id, email: user.email },
+      { 
+        id: user.id, 
+        email: user.email,
+        type: 'access'  // Token type for better tracking
+      },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { 
+        expiresIn: SECURITY_CONFIG.JWT.EXPIRES_IN,
+        issuer: SECURITY_CONFIG.JWT.ISSUER,
+        audience: SECURITY_CONFIG.JWT.AUDIENCE,
+        subject: user.id.toString()
+      }
     );
 
     res.json({

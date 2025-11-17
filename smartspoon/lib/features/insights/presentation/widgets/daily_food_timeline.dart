@@ -3,9 +3,33 @@ import 'package:flutter/material.dart';
 import '../../domain/models.dart';
 import 'dart:math';
 
-class DailyFoodTimeline extends StatelessWidget {
+class DailyFoodTimeline extends StatefulWidget {
   const DailyFoodTimeline({super.key, required this.events});
   final List<BiteEvent> events;
+
+  @override
+  State<DailyFoodTimeline> createState() => _DailyFoodTimelineState();
+}
+
+class _DailyFoodTimelineState extends State<DailyFoodTimeline>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  int _selectedIndex = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +50,7 @@ class DailyFoodTimeline extends StatelessWidget {
       biteBuckets[d] = 0;
       timeBuckets[d] = 0;
     }
-    for (final e in events) {
+    for (final e in widget.events) {
       if (!e.timestamp.isBefore(start)) {
         final d = DateTime(
           e.timestamp.year,
@@ -55,8 +79,6 @@ class DailyFoodTimeline extends StatelessWidget {
         timeBuckets[d] = est.clamp(8, 60);
       }
     }
-
-    // removed duplicate filler block; handled above
 
     final keys = biteBuckets.keys.toList()..sort();
     double minutesMax = 0;
@@ -92,17 +114,29 @@ class DailyFoodTimeline extends StatelessWidget {
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: size.width * 0.05),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1F1F1F) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [
+                  const Color(0xFF2C2C2E),
+                  const Color(0xFF1C1C1E),
+                ]
+              : [
+                  Colors.white,
+                  const Color(0xFFF8F9FA),
+                ],
+        ),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? Colors.black.withValues(alpha: 0.39)
-                : Colors.grey.withValues(alpha: 0.16),
-            blurRadius: 10,
-            offset: const Offset(0, 6),
+                ? Colors.black.withValues(alpha: 0.5)
+                : Colors.grey.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -110,150 +144,280 @@ class DailyFoodTimeline extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Text(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF667EEA),
+                      const Color(0xFF764BA2),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.insert_chart_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
                 'Weekly Time & Bites',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           Row(
             children: const [
               _LegendDot(color: Color(0xFF007AFF), label: 'Time (min)'),
-              SizedBox(width: 12),
+              SizedBox(width: 16),
               _LegendDot(color: Color(0xFFFFB100), label: 'Bites'),
             ],
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 220,
-            child: LineChart(
-              LineChartData(
-                minX: 0,
-                maxX: (keys.length - 1).toDouble(),
-                minY: 0,
-                maxY: minutesNiceMax.toDouble(),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: interval.toDouble(),
-                ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 36,
-                      interval: interval.toDouble(),
-                      getTitlesWidget: (v, meta) => Text(
-                        v.toInt().toString(),
-                        style: const TextStyle(fontSize: 10),
+          const SizedBox(height: 20),
+          AnimatedBuilder(
+            animation: _animationController,
+            builder: (context, child) {
+              return SizedBox(
+                height: 240,
+                child: LineChart(
+                  LineChartData(
+                    minX: 0,
+                    maxX: (keys.length - 1).toDouble(),
+                    minY: 0,
+                    maxY: minutesNiceMax.toDouble(),
+                    gridData: FlGridData(
+                      show: true,
+                      drawVerticalLine: false,
+                      horizontalInterval: interval.toDouble(),
+                      getDrawingHorizontalLine: (value) => FlLine(
+                        color: isDark
+                            ? Colors.grey.withValues(alpha: 0.15)
+                            : Colors.grey.withValues(alpha: 0.1),
+                        strokeWidth: 1,
+                        dashArray: [5, 5],
                       ),
                     ),
-                  ),
-                  rightTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 36,
-                      interval:
-                          max(1.0, (bitesNiceMax / 5).roundToDouble()) *
-                          scaleFactor,
-                      getTitlesWidget: (v, meta) {
-                        final raw = (v / scaleFactor).round();
-                        return Text(
-                          raw.toString(),
-                          style: const TextStyle(fontSize: 10),
-                        );
-                      },
-                    ),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 24,
-                      getTitlesWidget: (value, meta) {
-                        final idx = value.toInt();
-                        if (idx < 0 || idx >= keys.length) {
-                          return const SizedBox.shrink();
-                        }
-                        return Text(
-                          dayLabel(keys[idx]),
-                          style: const TextStyle(fontSize: 10),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                lineTouchData: LineTouchData(
-                  enabled: true,
-                  touchTooltipData: LineTouchTooltipData(
-                    tooltipBgColor: Colors.black87,
-                    getTooltipItems: (spots) {
-                      return spots.map((s) {
-                        final idx = s.x.toInt();
-                        final d = keys[idx];
-                        final minutes = (timeBuckets[d] ?? 0).toDouble();
-                        final bites = (biteBuckets[d] ?? 0).toDouble();
-                        final isTime = s.bar.color == const Color(0xFF007AFF);
-                        final label = isTime ? 'Time' : 'Bites';
-                        final value = isTime
-                            ? minutes.toStringAsFixed(0)
-                            : bites.toStringAsFixed(0);
-                        return LineTooltipItem(
-                          '${dayLabel(d)}\n$label: $value',
-                          const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+                    borderData: FlBorderData(show: false),
+                    titlesData: FlTitlesData(
+                      leftTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 40,
+                          interval: interval.toDouble(),
+                          getTitlesWidget: (v, meta) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Text(
+                              v.toInt().toString(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                              ),
+                            ),
                           ),
-                        );
-                      }).toList();
-                    },
+                        ),
+                      ),
+                      rightTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 40,
+                          interval:
+                              max(1.0, (bitesNiceMax / 5).roundToDouble()) *
+                              scaleFactor,
+                          getTitlesWidget: (v, meta) {
+                            final raw = (v / scaleFactor).round();
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Text(
+                                raw.toString(),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark
+                                      ? Colors.grey[400]
+                                      : Colors.grey[600],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 32,
+                          getTitlesWidget: (value, meta) {
+                            final idx = value.toInt();
+                            if (idx < 0 || idx >= keys.length) {
+                              return const SizedBox.shrink();
+                            }
+                            final isSelected = _selectedIndex == idx;
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? const Color(0xFF007AFF)
+                                          .withValues(alpha: 0.15)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  dayLabel(keys[idx]),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.w500,
+                                    color: isSelected
+                                        ? const Color(0xFF007AFF)
+                                        : (isDark
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600]),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    lineTouchData: LineTouchData(
+                      enabled: true,
+                      touchCallback: (event, response) {
+                        if (response?.lineBarSpots != null &&
+                            response!.lineBarSpots!.isNotEmpty) {
+                          setState(() {
+                            _selectedIndex =
+                                response.lineBarSpots!.first.x.toInt();
+                          });
+                        }
+                      },
+                      touchTooltipData: LineTouchTooltipData(
+                        tooltipRoundedRadius: 12,
+                        tooltipPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        getTooltipItems: (spots) {
+                          return spots.map((s) {
+                            final idx = s.x.toInt();
+                            final d = keys[idx];
+                            final minutes = (timeBuckets[d] ?? 0).toDouble();
+                            final bites = (biteBuckets[d] ?? 0).toDouble();
+                            final isTime = s.bar.color == const Color(0xFF007AFF);
+                            final label = isTime ? 'Time' : 'Bites';
+                            final value = isTime
+                                ? '${minutes.toStringAsFixed(0)} min'
+                                : bites.toStringAsFixed(0);
+                            return LineTooltipItem(
+                              '${dayLabel(d)}\n$label: $value',
+                              TextStyle(
+                                color: isTime
+                                    ? const Color(0xFF007AFF)
+                                    : const Color(0xFFFFB100),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ),
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: timeSpots
+                            .take((timeSpots.length * _animationController.value)
+                                .ceil())
+                            .toList(),
+                        isCurved: true,
+                        curveSmoothness: 0.4,
+                        color: const Color(0xFF007AFF),
+                        barWidth: 3.5,
+                        isStrokeCapRound: true,
+                        dotData: FlDotData(
+                          show: true,
+                          getDotPainter: (spot, percent, barData, index) {
+                            return FlDotCirclePainter(
+                              radius: 5,
+                              color: const Color(0xFF007AFF),
+                              strokeWidth: 2,
+                              strokeColor: Colors.white,
+                            );
+                          },
+                        ),
+                        belowBarData: BarAreaData(
+                          show: true,
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFF007AFF).withValues(alpha: 0.3),
+                              const Color(0xFF007AFF).withValues(alpha: 0.1),
+                              Colors.transparent,
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0.0, 0.5, 1.0],
+                          ),
+                        ),
+                      ),
+                      LineChartBarData(
+                        spots: biteSpotsScaled
+                            .take((biteSpotsScaled.length *
+                                    _animationController.value)
+                                .ceil())
+                            .toList(),
+                        isCurved: true,
+                        curveSmoothness: 0.4,
+                        color: const Color(0xFFFFB100),
+                        barWidth: 3.5,
+                        isStrokeCapRound: true,
+                        dotData: FlDotData(
+                          show: true,
+                          getDotPainter: (spot, percent, barData, index) {
+                            return FlDotCirclePainter(
+                              radius: 5,
+                              color: const Color(0xFFFFB100),
+                              strokeWidth: 2,
+                              strokeColor: Colors.white,
+                            );
+                          },
+                        ),
+                        belowBarData: BarAreaData(
+                          show: true,
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFFFFB100).withValues(alpha: 0.3),
+                              const Color(0xFFFFB100).withValues(alpha: 0.1),
+                              Colors.transparent,
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: const [0.0, 0.5, 1.0],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: timeSpots,
-                    isCurved: true,
-                    color: const Color(0xFF007AFF),
-                    barWidth: 3,
-                    dotData: FlDotData(show: true),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF007AFF).withValues(alpha: 0.24),
-                          Colors.transparent,
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                  ),
-                  LineChartBarData(
-                    spots: biteSpotsScaled,
-                    isCurved: true,
-                    color: const Color(0xFFFFB100),
-                    barWidth: 3,
-                    dotData: FlDotData(show: true),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFFFFB100).withValues(alpha: 0.24),
-                          Colors.transparent,
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),
@@ -268,17 +432,46 @@ class _LegendDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: color.withValues(alpha: 0.3),
+          width: 1,
         ),
-        const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.4),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.grey[300] : Colors.grey[700],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

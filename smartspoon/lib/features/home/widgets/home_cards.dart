@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/ble/application/ble_controller.dart';
+import 'package:smartspoon/services/unified_data_service.dart';
 import 'package:smartspoon/ui/widgets/app_card.dart';
 
 class SpoonConnectedCard extends StatelessWidget {
@@ -225,44 +226,48 @@ class EatingAnalysisCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    return AppCard(
-      padding: EdgeInsets.all(screenWidth * 0.05),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Today's Eating Analysis",
-            style: GoogleFonts.lato(
-              fontSize: screenWidth * 0.055,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: screenWidth * 0.06),
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+    return Consumer<UnifiedDataService>(
+      builder: (context, dataService, _) {
+        return AppCard(
+          padding: EdgeInsets.all(screenWidth * 0.05),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              InfoColumn(
-                icon: Icons.local_dining,
-                value: '156',
-                unit: 'Total Bites',
-                iconColor: Color(0xFF7E57C2),
+              Text(
+                "Today's Eating Analysis",
+                style: GoogleFonts.lato(
+                  fontSize: screenWidth * 0.055,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              InfoColumn(
-                icon: Icons.timer,
-                value: '3.2s',
-                unit: 'Avg/Bite',
-                iconColor: Color(0xFFEC407A),
-              ),
-              InfoColumn(
-                icon: Icons.speed,
-                value: 'Medium',
-                unit: 'Speed',
-                iconColor: Color(0xFFEF5350),
+              SizedBox(height: screenWidth * 0.06),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  InfoColumn(
+                    icon: Icons.local_dining,
+                    value: dataService.totalBites.toString(),
+                    unit: 'Total Bites',
+                    iconColor: const Color(0xFF7E57C2),
+                  ),
+                  InfoColumn(
+                    icon: Icons.timer,
+                    value: '${dataService.avgBiteTime.toStringAsFixed(1)}s',
+                    unit: 'Avg/Bite',
+                    iconColor: const Color(0xFFEC407A),
+                  ),
+                  InfoColumn(
+                    icon: Icons.speed,
+                    value: dataService.eatingSpeed,
+                    unit: 'Speed',
+                    iconColor: const Color(0xFFEF5350),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

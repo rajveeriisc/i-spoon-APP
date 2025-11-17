@@ -1,13 +1,12 @@
 import fetch from "node-fetch";
-
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
-
 async function postJson(path, body) {
   const res = await fetch(`${BASE_URL}${path}` , {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  
   const text = await res.text();
   try {
     const json = JSON.parse(text);
@@ -16,7 +15,6 @@ async function postJson(path, body) {
     return { status: res.status, body: text };
   }
 }
-
 async function main() {
   try {
     // Test login with seeded user

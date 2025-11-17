@@ -1,22 +1,21 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import { signup, login, logout, forgotPassword, resetPassword } from "../../controllers/authController.js";
-import { socialLogin } from "../../controllers/socialAuthController.js";
 import { verifyFirebaseToken, sendVerification } from "../../controllers/firebaseAuthController.js";
 
 const router = express.Router();
 
-// Deprecated for mobile app auth: use Firebase -> /api/auth/firebase/verify instead
-router.post("/signup", signup);
-router.post("/login", login);
-router.post("/logout", logout);
-router.post("/social", socialLogin);
-router.post("/firebase/verify", verifyFirebaseToken);
-router.post("/firebase/send-verification", sendVerification);
+router.post("/signup", signup);  // Register new user
+router.post("/login", login);    // Login with email/password
+router.post("/logout", logout);  // Logout (clears client token)
 
+router.post("/firebase/verify", verifyFirebaseToken);                // Verify Firebase ID token
+router.post("/firebase/send-verification", sendVerification);        // Send email verification
+
+// Password Reset
 const limiterTight = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
-router.post("/forgot", limiterTight, forgotPassword);
-router.post("/reset", limiterTight, resetPassword);
+router.post("/forgot", limiterTight, forgotPassword);  // Request password reset
+router.post("/reset", limiterTight, resetPassword);    // Reset password with token
 
 export default router;
 

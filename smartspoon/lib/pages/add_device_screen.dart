@@ -26,7 +26,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   // BLE state
   bool _isScanning = false;
   bool _bluetoothEnabled = false;
-  final List<ScanResult> _scanResults = [];
   List<BluetoothDevice> _connectedDevices = [];
   List<RecentDevice> _recentDevices = [];
   final BleRecentRepository _recentRepo = BleRecentRepository();
@@ -60,6 +59,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
   Future<void> _initBluetooth() async {
     try {
       // Check if Bluetooth is available on this device
+
       if (await FlutterBluePlus.isSupported == false) {
         if (mounted) {
           setState(() {
@@ -171,10 +171,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
       return;
     }
 
-    // Start animation
-    setState(() => _isScanning = true);
-    _animationController.repeat();
-
     try {
       // Delegate scan to controller (repository handles service filtering)
       final ctrl = context.read<BleController>();
@@ -188,26 +184,14 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isScanning = false);
-        _animationController.stop();
-        _animationController.reset();
-      }
     }
   }
 
   Future<void> _connectToDevice(BluetoothDevice device) async {
     try {
-      // Stop scanning before connecting
-      if (_isScanning) {
-        await FlutterBluePlus.stopScan();
-        setState(() {
-          _isScanning = false;
-        });
-        _animationController.stop();
-        _animationController.reset();
-      }
+      // Stop scanning before connecting via controller (keeps state consistent)
+      final ctrl = context.read<BleController>();
+      await ctrl.stopScan();
 
       // Show loading indicator
       if (mounted) {
@@ -220,7 +204,6 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
       }
 
       // Use central BleController so repository subscribes and streams data to UI
-      final ctrl = context.read<BleController>();
       await ctrl.connect(device.remoteId.toString(), name: device.platformName);
 
       // Update connected devices list
@@ -356,7 +339,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
             children: [
               Consumer<BleController>(
                 builder: (context, ctrl, _) {
-                  final isScanning = ctrl.isScanning || _isScanning;
+                  final isScanning = ctrl.isScanning;
+                  if (isScanning) {
+                    _animationController.repeat();
+                  } else {
+                    _animationController.stop();
+                    _animationController.reset();
+                  }
                   return ScanHeader(
                     isScanning: isScanning,
                     onScan: _startScan,
@@ -379,7 +368,11 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
                 onChanged: (idx) => setState(() => _filterIndex = idx),
               ),
               const SizedBox(height: 8),
-              _buildNearbyHeader(context),
+              // Nearby header with dynamic count
+              Consumer<BleController>(
+                builder: (context, ctrl, _) =>
+                    _buildNearbyHeader(context, count: ctrl.devices.length),
+              ),
               const SizedBox(height: 12),
 
               Consumer<BleController>(
@@ -435,8 +428,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen>
     );
   }
 
-  Widget _buildNearbyHeader(BuildContext context) {
-    final count = _scanResults.length;
+  Widget _buildNearbyHeader(BuildContext context, {required int count}) {
     return Row(
       children: [
         Container(

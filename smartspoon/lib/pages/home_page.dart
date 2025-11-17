@@ -5,12 +5,10 @@ import 'package:smartspoon/main.dart';
 import 'package:smartspoon/pages/add_device_screen.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:smartspoon/features/insights/application/insights_controller.dart';
-import 'package:smartspoon/features/insights/infrastructure/mock_insights_repository.dart';
 import 'package:smartspoon/features/insights/presentation/insights_dashboard.dart';
 import 'package:smartspoon/pages/profile_page.dart';
+import 'package:smartspoon/services/unified_data_service.dart';
 import 'package:smartspoon/state/user_provider.dart';
-import 'package:smartspoon/features/ble/application/ble_controller.dart';
 
 // HomePage widget serves as the main entry point for the app's home screen
 class HomePage extends StatefulWidget {
@@ -37,10 +35,8 @@ class _HomePageState extends State<HomePage> {
       case 0:
         return const HomeContent();
       case 1:
-        return ChangeNotifierProvider(
-          create: (_) => InsightsController(MockInsightsRepository())..init(),
-          child: const InsightsDashboard(),
-        );
+        // InsightsController now provided globally in main.dart
+        return const InsightsDashboard();
       case 2:
         return const ProfilePage();
       default:
@@ -147,7 +143,6 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: false, // Remove back arrow
         toolbarHeight: _appBarToolbarHeight(screenWidth),
         titleSpacing: 0,
         title: Padding(
@@ -262,8 +257,8 @@ class SpoonConnectedCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isDarkMode
-                ? Colors.black.withValues(alpha: 0.39)
-                : Colors.grey.withValues(alpha: 0.20),
+                ? Colors.black.withAlpha(100)
+                : Colors.grey.withAlpha(50),
             spreadRadius: 2,
             blurRadius: 10,
             offset: const Offset(0, 5),
@@ -335,7 +330,7 @@ class SpoonConnectedCard extends StatelessWidget {
   }
 }
 
-// TemperatureDisplay shows food and heater temperature
+// TemperatureDisplay shows food and heater temperature (unified with Insights)
 class TemperatureDisplay extends StatelessWidget {
   const TemperatureDisplay({super.key});
 
@@ -344,54 +339,52 @@ class TemperatureDisplay extends StatelessWidget {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    return Container(
-      padding: EdgeInsets.all(screenWidth * 0.05),
-      decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: isDarkMode
-                ? Colors.black.withValues(alpha: 0.39)
-                : Colors.grey.withValues(alpha: 0.12),
-            spreadRadius: 2,
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+    return Consumer<UnifiedDataService>(
+      builder: (context, dataService, _) {
+        return Container(
+          padding: EdgeInsets.all(screenWidth * 0.05),
+          decoration: BoxDecoration(
+            color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: isDarkMode
+                    ? Colors.black.withAlpha(100)
+                    : Colors.grey.withAlpha(30),
+                spreadRadius: 2,
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          Consumer<BleController>(
-            builder: (context, controller, _) {
-              final t = controller.lastPacket?.temperatureC;
-              final formatted = t != null ? '${t.toStringAsFixed(1)}°C' : '--';
-              return TemperatureColumn(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              TemperatureColumn(
                 icon: Icons.thermostat,
                 label: 'Food Temp',
-                temperature: formatted,
+                temperature: '${dataService.foodTempC.toStringAsFixed(1)}°C',
                 color: const Color(0xFFFFA726),
                 fontSize: screenWidth * 0.07,
-              );
-            },
+              ),
+              SizedBox(
+                height: screenWidth * 0.2,
+                child: VerticalDivider(
+                  color: Colors.grey.withAlpha(50),
+                  thickness: 2,
+                ),
+              ),
+              TemperatureColumn(
+                icon: Icons.local_fire_department,
+                label: 'Heater Temp',
+                temperature: '${dataService.heaterTempC.toStringAsFixed(1)}°C',
+                color: const Color(0xFFEF5350),
+                fontSize: screenWidth * 0.07,
+              ),
+            ],
           ),
-          SizedBox(
-            height: screenWidth * 0.2,
-            child: VerticalDivider(
-              color: Colors.grey.withValues(alpha: 0.20),
-              thickness: 2,
-            ),
-          ),
-          TemperatureColumn(
-            icon: Icons.local_fire_department,
-            label: 'Heater Temp',
-            temperature: '60°C',
-            color: const Color(0xFFEF5350),
-            fontSize: screenWidth * 0.07,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -420,7 +413,7 @@ class TemperatureColumn extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(fontSize * 0.3),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
+            color: color.withAlpha(30),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, size: fontSize * 0.8, color: color),
@@ -443,7 +436,7 @@ class TemperatureColumn extends StatelessWidget {
   }
 }
 
-// EatingAnalysisCard displays daily eating metrics
+// EatingAnalysisCard displays daily eating metrics (unified with Insights)
 class EatingAnalysisCard extends StatelessWidget {
   const EatingAnalysisCard({super.key});
 
@@ -452,58 +445,62 @@ class EatingAnalysisCard extends StatelessWidget {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    return Container(
-      padding: EdgeInsets.all(screenWidth * 0.05),
-      decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: isDarkMode
-                ? Colors.black.withValues(alpha: 0.39)
-                : Colors.grey.withValues(alpha: 0.12),
-            spreadRadius: 2,
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Today's Eating Analysis",
-            style: GoogleFonts.lato(
-              fontSize: screenWidth * 0.055,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: screenWidth * 0.06),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: const [
-              InfoColumn(
-                icon: Icons.local_dining,
-                value: '156',
-                unit: 'Total Bites',
-                iconColor: Color(0xFF7E57C2),
-              ),
-              InfoColumn(
-                icon: Icons.timer,
-                value: '3.2s',
-                unit: 'Avg/Bite',
-                iconColor: Color(0xFFEC407A),
-              ),
-              InfoColumn(
-                icon: Icons.speed,
-                value: 'Medium',
-                unit: 'Speed',
-                iconColor: Color(0xFFEF5350),
+    return Consumer<UnifiedDataService>(
+      builder: (context, dataService, _) {
+        return Container(
+          padding: EdgeInsets.all(screenWidth * 0.05),
+          decoration: BoxDecoration(
+            color: isDarkMode ? const Color(0xFF1F1F1F) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: isDarkMode
+                    ? Colors.black.withAlpha(100)
+                    : Colors.grey.withAlpha(30),
+                spreadRadius: 2,
+                blurRadius: 10,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
-        ],
-      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Today's Eating Analysis",
+                style: GoogleFonts.lato(
+                  fontSize: screenWidth * 0.055,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: screenWidth * 0.06),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  InfoColumn(
+                    icon: Icons.local_dining,
+                    value: dataService.totalBites.toString(),
+                    unit: 'Total Bites',
+                    iconColor: const Color(0xFF7E57C2),
+                  ),
+                  InfoColumn(
+                    icon: Icons.timer,
+                    value: '${dataService.avgBiteTime.toStringAsFixed(1)}s',
+                    unit: 'Avg/Bite',
+                    iconColor: const Color(0xFFEC407A),
+                  ),
+                  InfoColumn(
+                    icon: Icons.speed,
+                    value: dataService.eatingSpeed,
+                    unit: 'Speed',
+                    iconColor: const Color(0xFFEF5350),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -642,7 +639,7 @@ class InfoColumn extends StatelessWidget {
         Container(
           padding: EdgeInsets.all(screenWidth * 0.04),
           decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.20),
+            color: iconColor.withAlpha(50),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, size: screenWidth * 0.1, color: iconColor),
@@ -693,7 +690,7 @@ class _MyDevicesState extends State<MyDevices> {
           .map((s) => _RecentDevice.fromString(s))
           .whereType<_RecentDevice>()
           .toList();
-      
+
       // Check if widget is still mounted before calling setState
       if (mounted) {
         setState(() {
@@ -715,11 +712,11 @@ class _MyDevicesState extends State<MyDevices> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     final connectedIds = _connected.map((d) => d.remoteId.toString()).toSet();
     final recentNotConnected = _recent
         .where((r) => !connectedIds.contains(r.id))
@@ -822,8 +819,8 @@ class DeviceCard extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 color: isDarkMode
-                    ? Colors.black.withValues(alpha: 0.39)
-                    : Colors.grey.withValues(alpha: 0.12),
+                    ? Colors.black.withAlpha(100)
+                    : Colors.grey.withAlpha(30),
                 spreadRadius: 2,
                 blurRadius: 10,
                 offset: const Offset(0, 5),

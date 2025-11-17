@@ -20,7 +20,7 @@ async function getApplied() {
   const set = new Set(res.rows.map((r) => r.filename));
   return set;
 }
-
+    
 async function applyMigration(filename, sql) {
   console.log(`→ Applying ${filename} ...`);
   try {

@@ -7,16 +7,44 @@ import 'package:mime/mime.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:smartspoon/config/app_config.dart';
 
-/// Authentication service for handling user authentication and profile operations
-/// Uses JWT tokens for authorization and secure storage for token persistence
+/// Simple JWT decoder for extracting token expiry
+class _JWTDecoder {
+  static Map<String, dynamic>? decodePayload(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+
+      // Decode the payload (second part)
+      final payload = parts[1];
+      // Add padding if needed for base64 decoding
+      final normalized = base64.normalize(payload);
+      final decoded = utf8.decode(base64.decode(normalized));
+      return jsonDecode(decoded) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('JWT decode error: $e');
+      return null;
+    }
+  }
+
+  static DateTime? getExpiry(String token) {
+    final payload = decodePayload(token);
+    if (payload == null) return null;
+
+    final exp = payload['exp'];
+    if (exp is int) {
+      return DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+    }
+    return null;
+  }
+}
+
 class AuthService {
   AuthService._();
 
   static final FlutterSecureStorage _storage = const FlutterSecureStorage();
-  // In-memory fallback to avoid crashes on unsupported platforms (e.g., web/desktop)
+
   static final Map<String, String?> _memoryStorage = <String, String?>{};
-  
-  // Token refresh tracking
+
   static DateTime? _tokenExpiry;
   static Timer? _refreshTimer;
 
@@ -24,7 +52,6 @@ class AuthService {
     try {
       await _storage.write(key: key, value: value);
     } catch (_) {
-      // Fallback for platforms where secure storage is unavailable
       _memoryStorage[key] = value;
     }
   }
@@ -84,26 +111,35 @@ class AuthService {
     }
     throw AuthException(_extractErrorMessage(data));
   }
-  
+
   /// Schedule automatic token refresh before expiry
   static void _scheduleTokenRefresh(String token) {
     try {
       // Cancel existing timer
       _refreshTimer?.cancel();
-      
-      // JWT tokens expire in 7 days (backend config)
+
+      // Decode JWT to get actual expiry time
+      final expiry = _JWTDecoder.getExpiry(token);
+      if (expiry == null) {
+        debugPrint('Could not decode token expiry, using default');
+        _tokenExpiry = DateTime.now().add(const Duration(days: 7));
+      } else {
+        _tokenExpiry = expiry;
+        debugPrint('Token expires at: $_tokenExpiry');
+      }
+
       // Refresh 1 day before expiry to be safe
-      _tokenExpiry = DateTime.now().add(const Duration(days: 7));
-      final refreshAt = DateTime.now().add(const Duration(days: 6));
-      final delay = refreshAt.difference(DateTime.now());
-      
+      final now = DateTime.now();
+      final refreshAt = _tokenExpiry!.subtract(const Duration(days: 1));
+      final delay = refreshAt.difference(now);
+
       if (delay.isNegative) {
         debugPrint('Token already expired or expiring soon');
         return;
       }
-      
+
       debugPrint('Token refresh scheduled in ${delay.inHours} hours');
-      
+
       _refreshTimer = Timer(delay, () async {
         debugPrint('Refreshing token...');
         try {
@@ -119,7 +155,7 @@ class AuthService {
       debugPrint('Failed to schedule token refresh: $e');
     }
   }
-  
+
   /// Check if token is expired or expiring soon
   static bool isTokenExpiringSoon() {
     if (_tokenExpiry == null) return true;
@@ -214,12 +250,45 @@ class AuthService {
     _refreshTimer?.cancel();
     _refreshTimer = null;
     _tokenExpiry = null;
-    
+
     // Clear stored token
     await _removeItem('auth_token');
   }
 
   static Future<String?> getToken() => _getItem('auth_token');
+
+  /// Validate if stored token is still valid
+  static Future<bool> isTokenValid() async {
+    try {
+      final token = await getToken();
+      if (token == null || token.isEmpty) return false;
+
+      // Decode and check expiry
+      final expiry = _JWTDecoder.getExpiry(token);
+      if (expiry == null) return false;
+
+      // Check if token is expired
+      final now = DateTime.now();
+      return now.isBefore(expiry);
+    } catch (e) {
+      debugPrint('Token validation error: $e');
+      return false;
+    }
+  }
+
+  /// Get token only if it's valid, otherwise clear it
+  static Future<String?> getValidToken() async {
+    final token = await getToken();
+    if (token == null) return null;
+
+    final isValid = await isTokenValid();
+    if (!isValid) {
+      await logout(); // Clear invalid token
+      return null;
+    }
+
+    return token;
+  }
 
   static Future<Map<String, dynamic>> updateProfile({
     required Map<String, dynamic> data,
@@ -280,7 +349,9 @@ class AuthService {
         contentType: MediaType(parts.first, parts.last),
       ),
     );
-    final streamed = await request.send().timeout(const Duration(seconds: 30)); // Longer timeout for file uploads
+    final streamed = await request.send().timeout(
+      const Duration(seconds: 30),
+    ); // Longer timeout for file uploads
     final resp = await http.Response.fromStream(streamed);
     final body = _decodeBody(resp.body);
     if (resp.statusCode >= 200 && resp.statusCode < 300) return body;

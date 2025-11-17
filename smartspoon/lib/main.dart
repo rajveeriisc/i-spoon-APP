@@ -9,6 +9,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:smartspoon/features/ble/application/ble_controller.dart';
 import 'package:smartspoon/features/ble/infrastructure/flutter_blue_plus_repository.dart';
+import 'package:smartspoon/features/insights/application/insights_controller.dart';
+import 'package:smartspoon/features/insights/infrastructure/mock_insights_repository.dart';
+import 'package:smartspoon/services/unified_data_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
@@ -54,6 +57,24 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(
           create: (_) => BleController(FlutterBluePlusRepository())..init(),
+        ),
+        // Insights Controller - provides meal/tremor/bite data
+        ChangeNotifierProvider(
+          create: (_) => InsightsController(MockInsightsRepository())..init(),
+        ),
+        // Unified Data Service - bridges BLE and Insights data
+        ChangeNotifierProxyProvider2<BleController, InsightsController,
+            UnifiedDataService>(
+          create: (context) => UnifiedDataService(
+            bleController: context.read<BleController>(),
+            insightsController: context.read<InsightsController>(),
+          ),
+          update: (context, ble, insights, previous) =>
+              previous ??
+              UnifiedDataService(
+                bleController: ble,
+                insightsController: insights,
+              ),
         ),
         // Provide firebase error state
         Provider<String?>.value(value: firebaseError),

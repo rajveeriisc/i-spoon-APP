@@ -8,6 +8,11 @@
         "dev": "nodemon src/server.js",
         "migrate": "node src/scripts/migrate.js",
         "seed": "node src/scripts/seed.js",
+        "seed:bites": "node src/scripts/seed_bites.js",
+        "seed:bites:dev": "cross-env SEED_USER_LIMIT=10 SEED_DAYS=30 node src/scripts/seed_bites.js",
+        "seed:bites:staging": "cross-env SEED_USER_LIMIT=100 SEED_DAYS=60 node src/scripts/seed_bites.js",
+        "seed:bites:large": "cross-env SEED_USER_LIMIT=1000 SEED_DAYS=180 node src/scripts/seed_bites.js",
+        "cleanup": "node src/scripts/cleanup.js",
         "test:auth": "node src/scripts/testAuth.js",
         "test:validation": "node src/scripts/testValidation.js"
     },
@@ -23,9 +28,11 @@
         "jsonwebtoken": "^9.0.2",
         "multer": "^2.0.2",
         "node-fetch": "^3.3.2",
-        "pg": "^8.12.0"
+        "pg": "^8.12.0",
+        "sharp": "^0.33.5"
     },
     "devDependencies": {
+        "cross-env": "^7.0.3",
         "nodemon": "^3.1.0"
     }
 }

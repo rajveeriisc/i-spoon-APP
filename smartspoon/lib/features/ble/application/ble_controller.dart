@@ -36,7 +36,8 @@ class BleController with ChangeNotifier {
   bool get isScanning => _isScanning;
   bool get isConnecting => _isConnecting;
   bool get isConnected => conn.connected;
-  bool get hasPermissions => _bluetoothPermissionGranted && _locationPermissionGranted;
+  bool get hasPermissions =>
+      _bluetoothPermissionGranted || _locationPermissionGranted;
   String? get permissionError => _permissionError;
   
   bool isDeviceConnected(String id) =>
@@ -75,22 +76,20 @@ class BleController with ChangeNotifier {
   /// Check if BLE permissions are granted
   Future<bool> _checkPermissions() async {
     try {
-      // Check Bluetooth permission
+      // Check Bluetooth Scan (Android 12+) and Location (Android <= 11)
       final bluetoothStatus = await Permission.bluetoothScan.status;
       _bluetoothPermissionGranted = bluetoothStatus.isGranted;
-      
-      // Check Location permission (required for BLE on Android)
+
       final locationStatus = await Permission.locationWhenInUse.status;
       _locationPermissionGranted = locationStatus.isGranted;
-      
-      if (!_bluetoothPermissionGranted || !_locationPermissionGranted) {
-        _permissionError = 'Bluetooth and Location permissions are required';
-      } else {
-        _permissionError = null;
-      }
-      
+
+      final allowed = _bluetoothPermissionGranted || _locationPermissionGranted;
+      _permissionError = allowed
+          ? null
+          : 'Bluetooth Scan or Location permission is required to scan for devices';
+
       notifyListeners();
-      return hasPermissions;
+      return allowed;
     } catch (e) {
       debugPrint('Error checking permissions: $e');
       _permissionError = 'Failed to check permissions';
@@ -122,7 +121,7 @@ class BleController with ChangeNotifier {
         return false;
       }
       
-      if (hasPermissions) {
+      if (_bluetoothPermissionGranted || _locationPermissionGranted) {
         _permissionError = null;
         debugPrint('BLE permissions granted');
       } else {
@@ -130,7 +129,7 @@ class BleController with ChangeNotifier {
       }
       
       notifyListeners();
-      return hasPermissions;
+      return _bluetoothPermissionGranted || _locationPermissionGranted;
     } catch (e) {
       debugPrint('Error requesting permissions: $e');
       _permissionError = 'Failed to request permissions: $e';
@@ -188,13 +187,20 @@ class BleController with ChangeNotifier {
     notifyListeners();
     try {
       await _repo.startScan();
-    } finally {
+    } catch (e) {
+      _isScanning = false;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> stopScan() async {
+    await _repo.stopScan();
+    if (_isScanning) {
       _isScanning = false;
       notifyListeners();
     }
   }
-
-  Future<void> stopScan() => _repo.stopScan();
 
   Future<void> connect(String id, {String? name}) async {
     if (_isConnecting || connectedDeviceId == id) return;

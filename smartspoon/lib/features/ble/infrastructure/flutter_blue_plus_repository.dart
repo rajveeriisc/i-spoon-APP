@@ -46,15 +46,20 @@ class FlutterBluePlusRepository implements BleRepository {
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       for (final r in results) {
         final adv = r.advertisementData;
-        if (!adv.serviceUuids.contains(serviceUuid)) {
-          continue;
-        }
         final d = r.device;
         final name = d.platformName.isNotEmpty
             ? d.platformName
             : adv.localName.isNotEmpty
             ? adv.localName
             : 'SmartSpoon';
+
+        // Include devices that either advertise the target service UUID
+        // or match by expected device name (some firmwares omit service UUIDs in ads).
+        final hasService = adv.serviceUuids.contains(serviceUuid);
+        final matchesName = name.toLowerCase().contains('smartspoon');
+        if (!hasService && !matchesName) {
+          continue;
+        }
         found[d.remoteId.str] = BleDeviceSummary(
           id: d.remoteId.str,
           name: name,

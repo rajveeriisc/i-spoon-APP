@@ -2,8 +2,13 @@ import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
 import { getFirebaseAdmin } from "../config/firebaseAdmin.js";
 import { sendFirebaseVerificationEmail } from "../emails/firebase.js";
+import { SECURITY_CONFIG } from "../config/security.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
+// JWT secret - must be set in environment variables
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const verifyFirebaseToken = async (req, res) => {
   try {
@@ -79,10 +84,21 @@ export const verifyFirebaseToken = async (req, res) => {
       userRow = inserted.rows[0];
     }
 
+    // Sign backend JWT with standard claims
     const token = jwt.sign(
-      { id: userRow.id, email: userRow.email },
+      { 
+        id: userRow.id, 
+        email: userRow.email,
+        type: 'access',
+        firebase_uid: firebaseUid
+      },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      { 
+        expiresIn: SECURITY_CONFIG.JWT.EXPIRES_IN,
+        issuer: SECURITY_CONFIG.JWT.ISSUER,
+        audience: SECURITY_CONFIG.JWT.AUDIENCE,
+        subject: userRow.id.toString()
+      }
     );
 
     return res.json({

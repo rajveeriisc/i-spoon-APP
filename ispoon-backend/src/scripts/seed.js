@@ -1,38 +1,14 @@
 import dotenv from "dotenv";
-import bcrypt from "bcrypt";
 import { pool } from "../config/db.js";
 
 dotenv.config();
 
-async function ensureUsersTable() {
-  const createSql = `
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `;
-  await pool.query(createSql);
-}
-
-async function insertSampleUsers() {
-  const sampleUsers = [
-    { email: "alice@example.com", password: "Password123!" },
-    { email: "bob@example.com", password: "Password123!" },
-    { email: "charlie@example.com", password: "Password123!" }
-  ];
-
-  for (const user of sampleUsers) {
-    const hashed = await bcrypt.hash(user.password, 10);
-    await pool.query(
-      `INSERT INTO users (email, password) VALUES ($1, $2)
-       ON CONFLICT (email) DO NOTHING`,
-      [user.email.toLowerCase(), hashed]
-    );
-  }
-}
-
+/**
+ * General seed script placeholder
+ * Use specific seed scripts instead:
+ * - npm run seed:bites (seed bite data)
+ * - npm run migrate (setup database schema)
+ */
 async function main() {
   try {
     if (!process.env.DATABASE_URL) {
@@ -40,15 +16,16 @@ async function main() {
       process.exit(1);
     }
 
-    await ensureUsersTable();
-    await insertSampleUsers();
-    console.log("✅ Seed completed. Users inserted (if not existing):");
-    console.log(
-      "- alice@example.com / Password123!\n- bob@example.com / Password123!\n- charlie@example.com / Password123!"
-    );
+    console.log("✅ Database connection verified");
+    console.log("\nAvailable seed commands:");
+    console.log("  npm run seed:bites:dev     - Seed bite data (development)");
+    console.log("  npm run seed:bites:staging - Seed bite data (staging)");
+    console.log("  npm run seed:bites         - Seed bite data (all users)");
+    console.log("  npm run migrate            - Run database migrations");
+    
     process.exit(0);
   } catch (err) {
-    console.error("❌ Seed failed:", err.message);
+    console.error("❌ Database connection failed:", err.message);
     process.exit(1);
   }
 }
