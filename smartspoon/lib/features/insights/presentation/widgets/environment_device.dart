@@ -11,9 +11,7 @@ class EnvironmentDevice extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      margin: EdgeInsets.symmetric(
-        horizontal: MediaQuery.of(context).size.width * 0.05,
-      ),
+      // margin handled by parent
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1F1F1F) : Colors.white,

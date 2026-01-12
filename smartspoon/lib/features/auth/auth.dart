@@ -1,3 +1,3 @@
-export 'package:smartspoon/pages/login_screen.dart';
-export 'package:smartspoon/pages/signup_screen.dart';
-export 'package:smartspoon/pages/forgot_password.dart';
+export 'presentation/screens/login_screen.dart';
+export 'presentation/screens/signup_screen.dart';
+export 'presentation/screens/forgot_password_screen.dart';

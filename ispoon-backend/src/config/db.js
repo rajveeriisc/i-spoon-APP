@@ -19,7 +19,8 @@ const shouldUseSSL = (() => {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false, // TODO: Enable certificate validation in production
+  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false, 
+  // TODO: Enable certificate validation in production
   // Connection pool configuration
   max: 20, // Maximum pool size
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds

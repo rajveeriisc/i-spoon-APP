@@ -1,15 +1,30 @@
-import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
-import { getFirebaseAdmin } from "../config/firebaseAdmin.js";
-import { sendFirebaseVerificationEmail } from "../emails/firebase.js";
-import { SECURITY_CONFIG } from "../config/security.js";
+import {
+  getFirebaseAdmin,
+  generateFirebaseVerificationLink
+} from "../config/firebaseAdmin.js";
+import { generateAuthTokens } from "../services/token.service.js";
+import { sendWelcomeEmail } from "../services/email.service.js";
 
-// JWT secret - must be set in environment variables
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
-}
-const JWT_SECRET = process.env.JWT_SECRET;
-
+/**
+ * Verify Firebase ID Token and Create/Update User in Database
+ * 
+ * AUTH FLOW:
+ * 1. Flutter App calls POST /api/auth/firebase/verify with Firebase idToken
+ * 2. This function verifies the token with Firebase Admin SDK
+ * 3. Extracts user info: uid, email, name, picture, providerId, emailVerified
+ * 4. Upserts user in PostgreSQL (finds by firebase_uid or email, or creates new)
+ * 5. For email/password auth: requires emailVerified = true (returns 403 if not)
+ * 6. For Google OAuth: auto-marks as verified
+ * 7. Generates backend JWT tokens (accessToken + refreshToken)
+ * 8. Returns { token, tokens, user } to Flutter app
+ * 
+ * CALLED BY: Flutter auth_service.dart → verifyFirebaseToken()
+ * NEXT STEP: Flutter stores tokens in SecureStorage → navigates to HomePage
+ * 
+ * @param {Request} req - Express request with body.idToken
+ * @param {Response} res - Express response
+ */
 export const verifyFirebaseToken = async (req, res) => {
   try {
     const { idToken } = req.body || {};
@@ -40,12 +55,12 @@ export const verifyFirebaseToken = async (req, res) => {
         if (!providerId && Array.isArray(userRec.providerData) && userRec.providerData.length > 0) {
           providerId = userRec.providerData[0]?.providerId || null;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
-    // Enforce email verification for password-based accounts
-    if (!emailVerified && (providerId === 'password' || providerId === 'firebase' || !providerId)) {
-      return res.status(403).json({ message: "Email not verified. Please verify your email to continue." });
+    // Force email to lowercase to ensure consistent linking
+    if (email) {
+      email = email.toLowerCase();
     }
 
     // Upsert user in Postgres
@@ -84,25 +99,80 @@ export const verifyFirebaseToken = async (req, res) => {
       userRow = inserted.rows[0];
     }
 
-    // Sign backend JWT with standard claims
-    const token = jwt.sign(
-      { 
-        id: userRow.id, 
-        email: userRow.email,
-        type: 'access',
-        firebase_uid: firebaseUid
-      },
-      JWT_SECRET,
-      { 
-        expiresIn: SECURITY_CONFIG.JWT.EXPIRES_IN,
-        issuer: SECURITY_CONFIG.JWT.ISSUER,
-        audience: SECURITY_CONFIG.JWT.AUDIENCE,
-        subject: userRow.id.toString()
+    // Handle email verification based on auth provider
+    // Check Firebase verification status first (fresh from Firebase, not DB)
+    const authProvider = userRow.auth_provider || providerId;
+
+    if (authProvider === 'google.com') {
+      // Google OAuth users are automatically verified by Google
+      if (!userRow.email_verified) {
+        await pool.query(
+          'UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1',
+          [userRow.id]
+        );
+        userRow.email_verified = true;
       }
-    );
+    } else if (authProvider === 'password') {
+      // For Firebase email/password, use the FRESH emailVerified status from Firebase
+      // (not the stale DB value)
+      if (!emailVerified) {
+        return res.status(403).json({
+          message: "Email not verified. Please check your inbox and verify your email address.",
+          requiresVerification: true,
+          provider: 'firebase',
+          email: userRow.email,
+        });
+      }
+
+      // Sync the verification status to DB if it changed
+      if (emailVerified && !userRow.email_verified) {
+        await pool.query(
+          'UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1',
+          [userRow.id]
+        );
+        userRow.email_verified = true;
+      }
+    } else if (!userRow.email_verified) {
+      // Other OAuth providers
+      return res.status(403).json({
+        message: "Email not verified. Please verify your email with your authentication provider.",
+        requiresVerification: true,
+        provider: authProvider,
+      });
+    }
+
+    // ✨ SEND WELCOME EMAIL - Trigger after email verification
+    // Only send if user is verified AND welcome email hasn't been sent yet
+    if (userRow.email_verified && !userRow.welcome_email_sent) {
+      try {
+        console.log(`📧 Sending welcome email to ${userRow.email}...`);
+        await sendWelcomeEmail({
+          email: userRow.email,
+          name: userRow.name,
+        });
+
+        // Mark welcome email as sent in database
+        await pool.query(
+          'UPDATE users SET welcome_email_sent = true, welcome_email_sent_at = NOW(), updated_at = NOW() WHERE id = $1',
+          [userRow.id]
+        );
+
+        console.log(`✅ Welcome email sent successfully to ${userRow.email}`);
+      } catch (emailError) {
+        // Log error but don't block user login if email fails
+        console.error(`❌ Failed to send welcome email to ${userRow.email}:`, emailError);
+        // Continue with login even if email fails
+      }
+    }
+
+    const tokens = await generateAuthTokens(userRow, {
+      userAgent: req.get("user-agent"),
+      ipAddress: req.ip,
+    });
 
     return res.json({
-      token,
+      token: tokens.accessToken,
+      tokens,
       user: {
         id: userRow.id,
         email: userRow.email,
@@ -115,7 +185,7 @@ export const verifyFirebaseToken = async (req, res) => {
       },
     });
   } catch (err) {
-    try { console.error("verifyFirebaseToken error:", err); } catch (_) {}
+    try { console.error("verifyFirebaseToken error:", err); } catch (_) { }
     const msg = String(err?.message || "");
     const isAuth = /id token|auth|credential|parse private key|pem/i.test(msg);
     const status = isAuth ? 401 : 500;
@@ -123,20 +193,82 @@ export const verifyFirebaseToken = async (req, res) => {
   }
 };
 
-export const sendVerification = async (req, res) => {
+/**
+ * Request Email Verification for Firebase Users
+ * 
+ * Sends a verification email to users who signed up with email/password.
+ * This endpoint triggers Firebase to send the verification email directly.
+ * 
+ * AUTH FLOW:
+ * 1. Flutter App calls POST /api/auth/firebase/request-email-verification with idToken
+ * 2. This function verifies the token with Firebase Admin SDK
+ * 3. Checks if email is already verified (returns 400 if yes)
+ * 4. Generates Firebase verification link via Admin SDK
+ * 5. Firebase sends verification email to user
+ * 6. Returns success message to Flutter app
+ * 
+ * CALLED BY: Flutter login_screen.dart → _sendEmailVerificationLink()
+ *            (via firebase_auth_service.dart → sendEmailVerificationLink())
+ * 
+ * @param {Request} req - Express request with body.idToken
+ * @param {Response} res - Express response
+ */
+export const requestEmailVerification = async (req, res) => {
   try {
     const { idToken } = req.body || {};
+
     if (!idToken || typeof idToken !== "string") {
       return res.status(400).json({ message: "idToken is required" });
     }
-    await sendFirebaseVerificationEmail(idToken);
-    return res.json({ message: "Verification email sent" });
+
+    const admin = getFirebaseAdmin();
+    const decoded = await admin.auth().verifyIdToken(idToken);
+
+    // Check if already verified
+    if (decoded.email_verified) {
+      return res.status(400).json({
+        message: "Email is already verified",
+        verified: true
+      });
+    }
+
+    const email = decoded.email;
+    if (!email) {
+      return res.status(400).json({
+        message: "No email associated with this account"
+      });
+    }
+
+    // Generate verification link using Firebase Admin SDK
+    try {
+      const verificationLink = await generateFirebaseVerificationLink(email);
+
+      // Firebase handles sending the verification email directly
+      // No additional email service needed
+
+      return res.json({
+        message: "Verification email sent. Please check your inbox.",
+        email: email,
+        sent: true
+      });
+    } catch (linkError) {
+      console.error("Failed to generate verification link:", linkError);
+      return res.status(500).json({
+        message: "Failed to send verification email. Please try again later."
+      });
+    }
   } catch (err) {
+    try {
+      console.error("requestEmailVerification error:", err);
+    } catch (_) { }
+
     const msg = String(err?.message || "");
-    const isAuth = /token|auth|credential|invalid/i.test(msg);
+    const isAuth = /id token|auth|credential|parse private key|pem/i.test(msg);
     const status = isAuth ? 401 : 500;
-    return res.status(status).json({ message: isAuth ? "Invalid Firebase ID token" : "Internal error" });
+
+    return res.status(status).json({
+      message: isAuth ? "Invalid Firebase ID token" : "Internal error"
+    });
   }
 };
-
 

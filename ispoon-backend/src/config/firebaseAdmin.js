@@ -18,6 +18,57 @@ function normalizePrivateKey(raw) {
   return k.trim();
 }
 
+/**
+ * Send email verification link via Firebase
+ * @param {string} email - User's email address
+ * @returns {Promise<string>} Verification link
+ */
+export async function generateFirebaseVerificationLink(email) {
+  const admin = getFirebaseAdmin();
+  
+  const actionCodeSettings = {
+    url: process.env.FIREBASE_EMAIL_VERIFICATION_REDIRECT || 
+         process.env.APP_BASE_URL || 
+         'http://localhost:5000',
+    handleCodeInApp: process.env.FIREBASE_HANDLE_CODE_IN_APP === 'true',
+  };
+  
+  try {
+    const link = await admin.auth().generateEmailVerificationLink(
+      email,
+      actionCodeSettings
+    );
+    return link;
+  } catch (error) {
+    throw new Error(`Failed to generate verification link: ${error.message}`);
+  }
+}
+
+/**
+ * Send password reset link via Firebase
+ * @param {string} email - User's email address
+ * @returns {Promise<string>} Password reset link
+ */
+export async function generateFirebasePasswordResetLink(email) {
+  const admin = getFirebaseAdmin();
+  
+  const actionCodeSettings = {
+    url: process.env.FIREBASE_EMAIL_VERIFICATION_REDIRECT || 
+         process.env.APP_BASE_URL || 
+         'http://localhost:5000',
+  };
+  
+  try {
+    const link = await admin.auth().generatePasswordResetLink(
+      email,
+      actionCodeSettings
+    );
+    return link;
+  } catch (error) {
+    throw new Error(`Failed to generate password reset link: ${error.message}`);
+  }
+}
+
 export function getFirebaseAdmin() {
   if (initialized) return admin;
 

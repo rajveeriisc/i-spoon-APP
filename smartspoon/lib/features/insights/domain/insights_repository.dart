@@ -17,4 +17,12 @@ abstract class InsightsRepository {
     required DateTime end,
   });
   Future<TrendData> getTrends({required DateTime start, required DateTime end});
+  Future<List<DailyBiteSummary>> getDailyBiteSummaries({
+    required DateTime start,
+    required DateTime end,
+  });
+  Future<List<DailyTremorSummary>> getDailyTremorSummaries({
+    required DateTime start,
+    required DateTime end,
+  });
 }

@@ -1,3 +1,2 @@
-export 'package:smartspoon/services/auth_service.dart';
-export 'package:smartspoon/state/user_provider.dart';
+// Moved to lib/core - this file is deprecated
 export 'package:smartspoon/validators.dart';

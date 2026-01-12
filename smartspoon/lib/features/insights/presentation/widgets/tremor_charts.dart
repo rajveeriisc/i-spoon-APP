@@ -1,38 +1,19 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../domain/models.dart';
 
-class TremorCharts extends StatefulWidget {
-  const TremorCharts({super.key, required this.metrics});
+class TremorCharts extends StatelessWidget {
+  const TremorCharts({
+    super.key,
+    required this.metrics,
+    this.onViewHistory,
+  });
   final TremorMetrics? metrics;
-
-  @override
-  State<TremorCharts> createState() => _TremorChartsState();
-}
-
-class _TremorChartsState extends State<TremorCharts>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
+  final VoidCallback? onViewHistory;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final m = widget.metrics;
+    final m = metrics;
     final level = m?.level ?? TremorLevel.low;
     final levelText = level == TremorLevel.low
         ? 'Low'
@@ -47,9 +28,7 @@ class _TremorChartsState extends State<TremorCharts>
             : const Color(0xFFFF3B30);
 
     return Container(
-      margin: EdgeInsets.symmetric(
-        horizontal: MediaQuery.of(context).size.width * 0.05,
-      ),
+      // margin handled by parent
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -107,64 +86,54 @@ class _TremorChartsState extends State<TremorCharts>
                   letterSpacing: 0.5,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Waveform and Radial Gauge Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 2,
-                child: _TremorWaveform(
-                  magnitude: m?.currentMagnitude ?? 0.05,
-                  frequency: m?.peakFrequencyHz ?? 5.0,
-                  animation: _animationController,
-                  isDark: isDark,
+              const Spacer(),
+              if (onViewHistory != null)
+                TextButton.icon(
+                  onPressed: onViewHistory,
+                  icon: const Icon(Icons.history_rounded, size: 18),
+                  label: const Text('History'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: isDark ? Colors.grey[300] : Colors.grey[700],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 20),
-              _RadialTremorGauge(
-                level: level,
-                magnitude: m?.currentMagnitude ?? 0.05,
-                color: levelColor,
-                isDark: isDark,
-              ),
             ],
           ),
           const SizedBox(height: 24),
-          // Metrics Cards
+          
+          // Simplified Metrics Display
           Row(
             children: [
               Expanded(
-                child: _MetricCard(
-                  label: 'Magnitude',
-                  value: m?.currentMagnitude.toStringAsFixed(3) ?? '—',
-                  unit: 'rad/s',
-                  icon: Icons.show_chart_rounded,
+                child: _SimpleMetricCard(
+                  label: 'Tremor Level',
+                  value: levelText,
+                  icon: Icons.monitor_heart_rounded,
                   color: levelColor,
                   isDark: isDark,
+                  isHighlighted: true,
                 ),
               ),
-              const SizedBox(width: 12),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
               Expanded(
-                child: _MetricCard(
-                  label: 'Frequency',
-                  value: m?.peakFrequencyHz.toStringAsFixed(1) ?? '—',
-                  unit: 'Hz',
-                  icon: Icons.graphic_eq_rounded,
+                child: _SimpleMetricCard(
+                  label: 'Magnitude',
+                  value: '${m?.currentMagnitude.toStringAsFixed(3) ?? '—'} rad/s',
+                  icon: Icons.show_chart_rounded,
                   color: const Color(0xFF007AFF),
                   isDark: isDark,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
-                child: _MetricCard(
-                  label: 'Level',
-                  value: levelText,
-                  unit: '',
-                  icon: Icons.monitor_heart_rounded,
-                  color: levelColor,
+                child: _SimpleMetricCard(
+                  label: 'Frequency',
+                  value: '${m?.peakFrequencyHz.toStringAsFixed(1) ?? '—'} Hz',
+                  icon: Icons.graphic_eq_rounded,
+                  color: const Color(0xFF5856D6),
                   isDark: isDark,
                 ),
               ),
@@ -176,335 +145,63 @@ class _TremorChartsState extends State<TremorCharts>
   }
 }
 
-class _TremorWaveform extends StatelessWidget {
-  const _TremorWaveform({
-    required this.magnitude,
-    required this.frequency,
-    required this.animation,
-    required this.isDark,
-  });
-
-  final double magnitude;
-  final double frequency;
-  final Animation<double> animation;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Real-time Waveform',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          height: 120,
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.3)
-                : Colors.grey.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark
-                  ? Colors.grey.withValues(alpha: 0.2)
-                  : Colors.grey.withValues(alpha: 0.15),
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AnimatedBuilder(
-              animation: animation,
-              builder: (context, child) {
-                return CustomPaint(
-                  painter: _WaveformPainter(
-                    magnitude: magnitude,
-                    frequency: frequency,
-                    phase: animation.value * 2 * math.pi,
-                    isDark: isDark,
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _WaveformPainter extends CustomPainter {
-  final double magnitude;
-  final double frequency;
-  final double phase;
-  final bool isDark;
-
-  _WaveformPainter({
-    required this.magnitude,
-    required this.frequency,
-    required this.phase,
-    required this.isDark,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF667EEA)
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final glowPaint = Paint()
-      ..color = const Color(0xFF667EEA).withValues(alpha: 0.3)
-      ..strokeWidth = 6
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-
-    final path = Path();
-    final glowPath = Path();
-
-    const points = 200;
-    final amplitude = size.height * 0.3 * (magnitude * 10).clamp(0.0, 1.0);
-
-    for (var i = 0; i < points; i++) {
-      final x = (i / points) * size.width;
-      final t = (i / points) * 4 * math.pi + phase;
-      final y = size.height / 2 +
-          amplitude * math.sin(frequency * t) +
-          amplitude * 0.3 * math.sin(frequency * 2 * t + 1.5);
-
-      if (i == 0) {
-        path.moveTo(x, y);
-        glowPath.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-        glowPath.lineTo(x, y);
-      }
-    }
-
-    canvas.drawPath(glowPath, glowPaint);
-    canvas.drawPath(path, paint);
-
-    // Draw center line
-    final centerLinePaint = Paint()
-      ..color = isDark
-          ? Colors.grey.withValues(alpha: 0.2)
-          : Colors.grey.withValues(alpha: 0.3)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawLine(
-      Offset(0, size.height / 2),
-      Offset(size.width, size.height / 2),
-      centerLinePaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_WaveformPainter oldDelegate) => true;
-}
-
-class _RadialTremorGauge extends StatelessWidget {
-  const _RadialTremorGauge({
-    required this.level,
-    required this.magnitude,
-    required this.color,
-    required this.isDark,
-  });
-
-  final TremorLevel level;
-  final double magnitude;
-  final Color color;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = level == TremorLevel.low
-        ? 0.33
-        : level == TremorLevel.moderate
-            ? 0.66
-            : 1.0;
-
-    return SizedBox(
-      width: 100,
-      height: 144,
-      child: Column(
-        children: [
-          Text(
-            'Level',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: 90,
-            height: 90,
-            child: CustomPaint(
-              painter: _RadialGaugePainter(
-                progress: progress,
-                color: color,
-                isDark: isDark,
-              ),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.monitor_heart_rounded,
-                    color: color,
-                    size: 28,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RadialGaugePainter extends CustomPainter {
-  final double progress;
-  final Color color;
-  final bool isDark;
-
-  _RadialGaugePainter({
-    required this.progress,
-    required this.color,
-    required this.isDark,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 8;
-    const strokeWidth = 8.0;
-
-    // Background arc
-    final bgPaint = Paint()
-      ..color = isDark
-          ? Colors.grey.withValues(alpha: 0.2)
-          : Colors.grey.withValues(alpha: 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    const startAngle = math.pi * 0.75;
-    const sweepAngle = math.pi * 1.5;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      startAngle,
-      sweepAngle,
-      false,
-      bgPaint,
-    );
-
-    // Progress arc
-    final progressSweep = sweepAngle * progress;
-
-    final gradientShader = SweepGradient(
-      startAngle: startAngle,
-      endAngle: startAngle + progressSweep,
-      colors: [
-        const Color(0xFF34C759),
-        const Color(0xFFFFB100),
-        const Color(0xFFFF3B30),
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    ).createShader(Rect.fromCircle(center: center, radius: radius));
-
-    final progressPaint = Paint()
-      ..shader = gradientShader
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      startAngle,
-      progressSweep,
-      false,
-      progressPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RadialGaugePainter oldDelegate) =>
-      progress != oldDelegate.progress;
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({
+class _SimpleMetricCard extends StatelessWidget {
+  const _SimpleMetricCard({
     required this.label,
     required this.value,
-    required this.unit,
     required this.icon,
     required this.color,
     required this.isDark,
+    this.isHighlighted = false,
   });
 
   final String label;
   final String value;
-  final String unit;
   final IconData icon;
   final Color color;
   final bool isDark;
+  final bool isHighlighted;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: isHighlighted
+            ? color.withValues(alpha: 0.1)
+            : (isDark ? const Color(0xFF1C1C1E) : Colors.white),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: color.withValues(alpha: 0.2),
+          color: isHighlighted
+              ? color.withValues(alpha: 0.3)
+              : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.withValues(alpha: 0.1)),
           width: 1,
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Text(
             value,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: color,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (unit.isNotEmpty)
-            Text(
-              unit,
-              style: TextStyle(
-                fontSize: 10,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? Colors.white : Colors.black87,
             ),
           ),
         ],

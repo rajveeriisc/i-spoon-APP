@@ -27,8 +27,10 @@
         "helmet": "^7.1.0",
         "jsonwebtoken": "^9.0.2",
         "multer": "^2.0.2",
+        "node-cron": "^4.2.1",
         "node-fetch": "^3.3.2",
         "pg": "^8.12.0",
+        "resend": "^6.6.0",
         "sharp": "^0.33.5"
     },
     "devDependencies": {

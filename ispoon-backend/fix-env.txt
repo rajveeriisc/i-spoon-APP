@@ -1,0 +1,26 @@
+# Instructions to Fix .env File
+
+1. Open: ispoon-backend/.env in a text editor (VS Code, Notepad++, etc.)
+
+2. Replace ALL content with this (no extra spaces):
+
+NODE_ENV=development
+PORT=5000
+JWT_SECRET=28cd367e2afc7f3c63544a015076fc62
+DATABASE_URL=postgresql://neondb_owner:npg_zT1DQL5pmMxd@ep-morning-union-a14vr54a-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+FIREBASE_WEB_API_KEY=AIzaSyDQDwli8TZhYg1yV0BAxfaPoA9sxkAtDQw
+APP_BASE_URL=http://localhost:5000
+FIREBASE_PROJECT_ID=i-spoon-auth
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-fbsvc@i-spoon-auth.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDKc00i/a9GHLk0\n4+vhJ73Mu4yXYrOAkDk00RIVRgTV7Vuz/sh8SQY+yQytrB9mq9eWrT8X+VgTaMZQ\nf8rpWnNHqSxYRLUiZ91Hc561B8LpLiJdH7O1pl0YYHY62CXeVQciZhtHVFSen2WJ\nrY7he+yzWOPlVGG2SEkjDog8YJr1CnlxdwFCrZ3HZoB1e2NcQUo0w2Pzoax36AXX\nrvyUB00jrYKUdnDzdKCNp4IG2SLdizvpr3XrSxqcHnlWPYyGVQHc8tzOQHuZIiHN\n+Uffj5MsHSWZOKePEcsMaMKT07s7aeI+ICE5p43pWfhdESseU+s4MvgJWHli+0zD\nfLOd6oFVAgMBAAECggEAAbh+akNRCbag0Q/s/QFAzg9rX1cdoLYOxigAbSJ5dRyY\nbGdth2kGgv+uGU80WQ4IXPEM84FsE57M0h7hnRcgeThu4+i3ZPPGCltIMsQM4TkI\nTaQYB/l8HqgQxx6lN34TWodAQKbFkII4BfQbaGBGaOTKJYcc9fHVsUzDTcMJJVpM\n12YDFoOjFa8egm7AfzBsIIm9+cXjyIhoq0m0+UexH/QxkkY43aF5/uByNmW+eAEk\n8Flre4CKefnWfxvZhhF3UGwIS5qjIiIWpBxcOldBR9jK+Wpow32BMUnRyQwpKLG2\naaukv5LVUph7hWefXpGPaJ0fwvtn2vn8MaMSRcYtJwKBgQDoYkQhJ89HrcAvR2Oh\npFnOVStC7dt07BQ79gGD1ALSFUg5dFHOr/Vva4QVoYmV0spSsGU56M/O9vWJM0Lv\nF/46xaPWbGbhV8GIaGJrxUU56X4+QWbJV7sWrBCBsZW42lYvJrfUdTB+KyU+KSCQ\nlyhLSp/ariVj9mn9UEXRo+NaKwKBgQDfBkgkN1ssfjThJjgI4N4FS3GGPpDoeQHE\nIpqPX1aRpmsqzMFhE5+fv1aNgaASFVipYWvCFzY5yZcNdNeWiayvu6OG6Kj0Y5Tr\nJGpl40X2ujTwVdPRFRv2nZktfIMLv7ctFdMpoKOC/gm1k8XYxi6BAOgue5zhG2Wf\nai6sgz1SfwKBgBo0KnaKpKbygr9SD3wEqlPH6s7rP1nZ3RY90UHqQD8sQy6nXSov\nUT+1IfnGc1s/n6zfUyrKg9RUqK9F5oBLdlFuQ+FD6/3xBVO6YY7BeeLj32ZpvYtq\npyARWvMk8Tsc86bxeL0uUb+IYfS2coObZ+HFkmz4QiMZgC4eRSE0l8htAoGBAIS1\nQzYxrlICY0raKBu4WsSByPKdxjJe1tsz0A6iJ2wRv9E+947hU2mGPGWFjY9VHmXj\nr3BVyZGHUBfUv/g2wgfrunmrdeW+X72v9JPeMiKHWLruB1VxnysXSi+T2JKkKMZu\nJzGtAb8PlQ1z+hVsj/15Ya9PJOGaINVEJLPIgDPXAoGAAjE098OtmredPRzcZwn4\njaoHB6s15Wi42W0RPk6HyIViSoHJrHffqNwlbd5jzh0FbcyyfhtviblZ2C50DN9k\nhCoaFxyKSSno0lVZVg2Y+XawC6OpOuMQ+MNQT6VIKfRfG3kRrgO7vzehjqp5utlB\nAMFxxtuNZvAeal+YLEJZ6LM=\n-----END PRIVATE KEY-----\n"
+
+3. Save the file
+
+4. Restart server: npm run dev
+
+IMPORTANT:
+- NO spaces around the = signs
+- NO extra spaces or tabs
+- Keep quotes around FIREBASE_PRIVATE_KEY
+- One value per line
+

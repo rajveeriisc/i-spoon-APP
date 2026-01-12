@@ -1,99 +1,66 @@
 /**
- * Standard error codes for consistent error handling
- */
-export const ErrorCodes = {
-  // Authentication errors (1000-1999)
-  AUTH_INVALID_CREDENTIALS: 1001,
-  AUTH_TOKEN_EXPIRED: 1002,
-  AUTH_TOKEN_INVALID: 1003,
-  AUTH_UNAUTHORIZED: 1004,
-  AUTH_EMAIL_NOT_VERIFIED: 1005,
-  
-  // Validation errors (2000-2999)
-  VALIDATION_FAILED: 2001,
-  VALIDATION_EMAIL_INVALID: 2002,
-  VALIDATION_PASSWORD_WEAK: 2003,
-  VALIDATION_REQUIRED_FIELD: 2004,
-  VALIDATION_INVALID_FORMAT: 2005,
-  
-  // Resource errors (3000-3999)
-  RESOURCE_NOT_FOUND: 3001,
-  RESOURCE_ALREADY_EXISTS: 3002,
-  RESOURCE_CONFLICT: 3003,
-  
-  // File errors (4000-4999)
-  FILE_TOO_LARGE: 4001,
-  FILE_INVALID_TYPE: 4002,
-  FILE_UPLOAD_FAILED: 4003,
-  
-  // Server errors (5000-5999)
-  SERVER_ERROR: 5001,
-  DATABASE_ERROR: 5002,
-  EXTERNAL_SERVICE_ERROR: 5003,
-};
-
-/**
- * Custom error class with error code
+ * Custom Application Error class
  */
 export class AppError extends Error {
-  constructor(message, code = ErrorCodes.SERVER_ERROR, statusCode = 500) {
+  constructor(message, statusCode = 500, data = null) {
     super(message);
-    this.name = 'AppError';
-    this.code = code;
     this.statusCode = statusCode;
+    this.data = data;
+    this.isOperational = true; // Distinguish operational errors from programming errors
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 /**
- * Format error response consistently
+ * Validation Error (400)
  */
-export function formatErrorResponse(error, includeStack = false) {
-  const response = {
-    success: false,
-    message: error.message || 'An error occurred',
-    code: error.code || ErrorCodes.SERVER_ERROR,
-  };
-  
-  if (includeStack && process.env.NODE_ENV !== 'production') {
-    response.stack = error.stack;
+export class ValidationError extends AppError {
+  constructor(message, errors = []) {
+    super(message, 400, { errors });
   }
-  
-  return response;
 }
 
 /**
- * Create validation error
+ * Authentication Error (401)
  */
-export function validationError(field, message) {
-  return new AppError(
-    message || `Validation failed for ${field}`,
-    ErrorCodes.VALIDATION_FAILED,
-    400
-  );
+export class AuthenticationError extends AppError {
+  constructor(message = "Authentication required") {
+    super(message, 401);
+  }
 }
 
 /**
- * Create authentication error
+ * Authorization Error (403)
  */
-export function authError(message = 'Authentication failed') {
-  return new AppError(message, ErrorCodes.AUTH_UNAUTHORIZED, 401);
+export class AuthorizationError extends AppError {
+  constructor(message = "Insufficient permissions") {
+    super(message, 403);
+  }
 }
 
 /**
- * Create not found error
+ * Not Found Error (404)
  */
-export function notFoundError(resource = 'Resource') {
-  return new AppError(
-    `${resource} not found`,
-    ErrorCodes.RESOURCE_NOT_FOUND,
-    404
-  );
+export class NotFoundError extends AppError {
+  constructor(message = "Resource not found") {
+    super(message, 404);
+  }
 }
 
+/**
+ * Conflict Error (409)
+ */
+export class ConflictError extends AppError {
+  constructor(message = "Resource conflict") {
+    super(message, 409);
+  }
+}
 
-
-
-
-
-
+/**
+ * Rate Limit Error (429)
+ */
+export class RateLimitError extends AppError {
+  constructor(message = "Too many requests") {
+    super(message, 429);
+  }
+}

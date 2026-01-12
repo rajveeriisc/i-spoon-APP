@@ -7,16 +7,23 @@ import crypto from "crypto";
 import dotenv from "dotenv";
 import path from "path";
 
-// Routes
-import authRoutes from "./modules/auth/routes.js";
-import userRoutes from "./modules/users/routes.js";
+// Routes - all from single location
+import {
+  authRoutes,
+  userRoutes,
+  deviceRoutes,
+  analyticsRoutes,
+  mockRoutes,
+  mealsRoutes,
+  emailRoutes,
+  notificationRoutes,
+} from "./routes/index.js";
 
 // Config & Utils
 import { errorMiddleware } from "./utils/errorHandler.js";
 import { SECURITY_CONFIG, validateSecurityConfig } from "./config/security.js";
 import { pool } from "./config/db.js";
 import { getFirebaseAdmin } from "./config/firebaseAdmin.js";
-import { getResetPasswordPage } from "./emails/templates/resetPasswordPage.js";
 
 dotenv.config();
 
@@ -109,7 +116,7 @@ app.get("/api/health", async (req, res) => {
       firebase: "unknown"
     }
   };
-  
+
   // Check database connection
   try {
     await pool.query("SELECT 1");
@@ -118,7 +125,7 @@ app.get("/api/health", async (req, res) => {
     health.services.database = "error";
     health.status = "degraded";
   }
-  
+
   // Check Firebase Admin initialization
   try {
     const admin = getFirebaseAdmin();
@@ -129,7 +136,7 @@ app.get("/api/health", async (req, res) => {
     health.services.firebase = "error";
     health.status = "degraded";
   }
-  
+
   res.status(health.status === "ok" ? 200 : 503).json(health);
 });
 
@@ -139,13 +146,19 @@ app.use(generalLimiter);
 // Auth routes with stricter limits
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/devices", deviceRoutes);
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/meals", mealsRoutes);
+app.use("/api/email", emailRoutes); // Welcome email endpoint
+app.use("/api/notifications", notificationRoutes); // Notification system
 
-// Password reset page (email link)
-app.get("/reset-password", (req, res) => {
-  const token = req.query.token || "";
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(getResetPasswordPage(token));
-});
+// Mock data generation (development/testing only)
+if (process.env.NODE_ENV !== 'production') {
+  app.use("/api/mock", mockRoutes);
+  console.log("🎲 Mock data endpoints enabled (development mode)");
+}
+
+// Note: Password reset is handled by Firebase (no custom page needed)
 
 export default app;
 
@@ -159,4 +172,3 @@ app.use((req, res, _next) => {
 app.use(errorMiddleware);
 
 
-  

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:smartspoon/features/core/widgets/network_avatar.dart';
-import 'package:smartspoon/state/user_provider.dart';
+import 'package:smartspoon/core/widgets/network_avatar.dart';
+import 'package:smartspoon/features/auth/index.dart';
 
 class ProfileHeaderCard extends StatelessWidget {
   const ProfileHeaderCard({super.key, required this.displayName});

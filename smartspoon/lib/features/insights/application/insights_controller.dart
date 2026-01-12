@@ -15,6 +15,8 @@ class InsightsController with ChangeNotifier {
   DeviceHealth? _deviceHealth;
   EnvironmentData? _environment;
   TrendData? _trends;
+  List<DailyBiteSummary> _dailySummaries = const [];
+  List<DailyTremorSummary> _tremorSummaries = const [];
 
   StreamSubscription? _tempSub;
   StreamSubscription? _tremorSub;
@@ -28,25 +30,41 @@ class InsightsController with ChangeNotifier {
   DeviceHealth? get deviceHealth => _deviceHealth;
   EnvironmentData? get environment => _environment;
   TrendData? get trends => _trends;
+  List<DailyBiteSummary> get dailySummaries => _dailySummaries;
+  List<DailyTremorSummary> get tremorSummaries => _tremorSummaries;
 
   Future<void> init() async {
-    await _loadStaticData();
+    await fetchHistory(90); // Fetch all 3 months so details pages have data
     _subscribeLive();
   }
 
-  Future<void> _loadStaticData() async {
-    _summary = await _repository.getLastMealSummary();
+  Future<void> fetchHistory(int days) async {
+    _summary = await _repository.getLastMealSummary(); // Always latest
+    
     final now = DateTime.now();
-    final start = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(const Duration(days: 6));
-    _bites = await _repository.getBiteEvents(start: start, end: now);
-    _trends = await _repository.getTrends(
-      start: now.subtract(const Duration(days: 7)),
+    
+    // For trends/charts (Eating Pattern)
+    final historyStart = now.subtract(Duration(days: days));
+    
+    _dailySummaries = await _repository.getDailyBiteSummaries(
+      start: historyStart,
       end: now,
     );
+    
+    _tremorSummaries = await _repository.getDailyTremorSummaries(
+      start: historyStart,
+      end: now,
+    );
+    
+    // For granular timeline (Bites)
+    // We might want to limit this if range is huge, but for now matching the range
+    _bites = await _repository.getBiteEvents(start: historyStart, end: now);
+    
+    _trends = await _repository.getTrends(
+      start: historyStart,
+      end: now,
+    );
+    
     notifyListeners();
   }
 
@@ -82,5 +100,18 @@ class InsightsController with ChangeNotifier {
       // ignore: empty_catches
     } catch (_) {}
     super.dispose();
+  }
+
+  /// Fetch tremor data for a specific date range (for history page)
+  Future<List<DailyTremorSummary>> fetchTremorDataForRange(int days) async {
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: days - 1));
+    
+    final summaries = await _repository.getDailyTremorSummaries(
+      start: start,
+      end: now,
+    );
+    
+    return summaries;
   }
 }

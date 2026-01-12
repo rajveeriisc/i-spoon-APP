@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/main.dart';
-import 'package:smartspoon/state/user_provider.dart';
+import 'package:smartspoon/features/auth/index.dart';
+import 'package:smartspoon/core/providers/theme_provider.dart';
 
 class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   const HomeAppBar({

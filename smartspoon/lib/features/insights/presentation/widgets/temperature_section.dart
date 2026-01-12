@@ -38,9 +38,7 @@ class _TemperatureSectionState extends State<TemperatureSection>
     final alert = food > 60;
 
     return Container(
-      margin: EdgeInsets.symmetric(
-        horizontal: MediaQuery.of(context).size.width * 0.05,
-      ),
+      // margin handled by parent
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -313,24 +311,26 @@ class _CircularGaugePainter extends CustomPainter {
     const startAngle = -math.pi / 2; // Start from top
     final sweepAngle = 2 * math.pi * progress;
 
-    final gradientShader = SweepGradient(
-      startAngle: startAngle,
-      endAngle: startAngle + sweepAngle,
-      colors: [
-        color.withValues(alpha: 0.5),
-        color,
-        color.withValues(alpha: 0.8),
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    ).createShader(rect);
+    if (progress > 0) {
+      final gradientShader = SweepGradient(
+        startAngle: startAngle,
+        endAngle: startAngle + sweepAngle,
+        colors: [
+          color.withValues(alpha: 0.5),
+          color,
+          color.withValues(alpha: 0.8),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(rect);
 
-    final progressPaint = Paint()
-      ..shader = gradientShader
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+      final progressPaint = Paint()
+        ..shader = gradientShader
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
 
-    canvas.drawArc(rect, startAngle, sweepAngle, false, progressPaint);
+      canvas.drawArc(rect, startAngle, sweepAngle, false, progressPaint);
+    }
 
     // Glow effect at the end of progress
     if (progress > 0) {
@@ -351,3 +351,4 @@ class _CircularGaugePainter extends CustomPainter {
   bool shouldRepaint(_CircularGaugePainter oldDelegate) =>
       progress != oldDelegate.progress || color != oldDelegate.color;
 }
+ 

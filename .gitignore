@@ -11,7 +11,7 @@ build/
 .DS_Store
 
 # Env & secrets
-.env
+#.env
 **/.env
 **/serviceAccount.json
 **/google-services.json
@@ -20,4 +20,4 @@ build/
 
 # Generated
 smartspoon/**/GeneratedPluginRegistrant.*
-smartspoon/flutter_01.png
+smartspoon/flutter_01.png   

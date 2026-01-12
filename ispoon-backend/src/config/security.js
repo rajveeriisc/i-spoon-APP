@@ -7,6 +7,14 @@ export const SECURITY_CONFIG = {
     RESET: { windowMs: 60 * 60 * 1000, max: 3 }, // 3 resets per hour
   },
 
+  PASSWORD_RESET: {
+    TOKEN_TTL_MINUTES: 60,
+  },
+
+  EMAIL_VERIFICATION: {
+    TOKEN_TTL_MINUTES: 60 * 24, // 24 hours
+  },
+
   // Password requirements
   PASSWORD: {
     MIN_LENGTH: 8,
@@ -33,6 +41,8 @@ export const SECURITY_CONFIG = {
   JWT: {
     SECRET_MIN_LENGTH: 32,
     EXPIRES_IN: '7d',
+    ACCESS_EXPIRES_IN: '7d',
+    REFRESH_EXPIRES_IN: '30d',
     ISSUER: 'i-spoon-backend',
     AUDIENCE: 'i-spoon-mobile',
   },

@@ -21,7 +21,6 @@ class MealSummary {
 class BiteEvent {
   final int index;
   final DateTime timestamp;
-  final double weightGrams;
   final double foodTempC;
   final double tremorMagnitude; // rad/s magnitude near bite
   final BiteEventType type;
@@ -29,7 +28,6 @@ class BiteEvent {
   const BiteEvent({
     required this.index,
     required this.timestamp,
-    required this.weightGrams,
     required this.foodTempC,
     required this.tremorMagnitude,
     required this.type,
@@ -79,6 +77,44 @@ class TrendData {
     required this.bitesPerMeal,
     required this.avgMealDurationMin,
     required this.tremorIndexOverTime,
+  });
+}
+
+@immutable
+class DailyBiteSummary {
+  final DateTime date;
+  final int totalBites;
+  final double avgMealDurationMin;
+  final double totalDurationMin;
+  final double avgPaceBpm;
+  final Map<String, int> mealBites;
+
+  const DailyBiteSummary({
+    required this.date,
+    required this.totalBites,
+    required this.avgMealDurationMin,
+    required this.totalDurationMin,
+    required this.avgPaceBpm,
+    this.mealBites = const {},
+  });
+}
+
+@immutable
+class DailyTremorSummary {
+  final DateTime date;
+  final double avgMagnitude;
+  final double peakMagnitude;
+  final double avgFrequencyHz;
+  final TremorLevel dominantLevel;
+  final Map<String, int>? tremorLevelCounts; // {'low': 10, 'moderate': 5, 'high': 2}
+
+  const DailyTremorSummary({
+    required this.date,
+    required this.avgMagnitude,
+    required this.peakMagnitude,
+    required this.avgFrequencyHz,
+    required this.dominantLevel,
+    this.tremorLevelCounts,
   });
 }
 

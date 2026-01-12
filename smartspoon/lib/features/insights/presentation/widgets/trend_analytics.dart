@@ -59,9 +59,7 @@ class _TrendAnalyticsState extends State<TrendAnalytics>
     final tremorTrend = _calculateTrend(trends.tremorIndexOverTime);
 
     return Container(
-      margin: EdgeInsets.symmetric(
-        horizontal: MediaQuery.of(context).size.width * 0.05,
-      ),
+      // margin handled by parent
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -414,8 +412,9 @@ class _TrendCard<T extends num> extends StatelessWidget {
     final maxY = data.map((e) => e.value.toDouble()).reduce((a, b) => a > b ? a : b);
     final minY = data.map((e) => e.value.toDouble()).reduce((a, b) => a < b ? a : b);
     final range = maxY - minY;
-    final adjustedMaxY = maxY + (range * 0.1);
-    final adjustedMinY = (minY - (range * 0.1)).clamp(0.0, double.infinity).toDouble();
+    // Add some padding to the range so the line doesn't touch the edges
+    final adjustedMaxY = maxY + (range * 0.2);
+    final adjustedMinY = (minY - (range * 0.2)).clamp(0.0, double.infinity).toDouble();
 
     return AnimatedBuilder(
       animation: animation,
@@ -426,23 +425,72 @@ class _TrendCard<T extends num> extends StatelessWidget {
             maxX: (data.length - 1).toDouble(),
             minY: adjustedMinY,
             maxY: adjustedMaxY,
-            gridData: FlGridData(show: false),
+            gridData: FlGridData(
+              show: false, // Keep it clean for sparkline
+            ),
             titlesData: FlTitlesData(show: false),
             borderData: FlBorderData(show: false),
-            lineTouchData: LineTouchData(enabled: false),
+            lineTouchData: LineTouchData(
+              enabled: true,
+              touchTooltipData: LineTouchTooltipData(
+                tooltipBgColor: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                tooltipRoundedRadius: 8,
+                tooltipPadding: const EdgeInsets.all(8),
+                tooltipBorder: BorderSide(
+                  color: color.withValues(alpha: 0.2),
+                  width: 1,
+                ),
+                getTooltipItems: (touchedSpots) {
+                  return touchedSpots.map((spot) {
+                    return LineTooltipItem(
+                      spot.y.toStringAsFixed(1),
+                      TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    );
+                  }).toList();
+                },
+              ),
+              handleBuiltInTouches: true,
+              getTouchedSpotIndicator: (barData, spotIndexes) {
+                return spotIndexes.map((index) {
+                  return TouchedSpotIndicatorData(
+                    FlLine(
+                      color: color.withValues(alpha: 0.5),
+                      strokeWidth: 2,
+                      dashArray: [4, 4],
+                    ),
+                    FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) =>
+                          FlDotCirclePainter(
+                        radius: 4,
+                        color: Colors.white,
+                        strokeWidth: 2,
+                        strokeColor: color,
+                      ),
+                    ),
+                  );
+                }).toList();
+              },
+            ),
             lineBarsData: [
               LineChartBarData(
                 spots: spots.take((spots.length * animation.value).ceil()).toList(),
                 isCurved: true,
+                curveSmoothness: 0.35,
                 color: color,
-                barWidth: 2.5,
+                barWidth: 3,
+                isStrokeCapRound: true,
                 dotData: FlDotData(show: false),
                 belowBarData: BarAreaData(
                   show: true,
                   gradient: LinearGradient(
                     colors: [
-                      color.withValues(alpha: 0.3),
-                      color.withValues(alpha: 0.05),
+                      color.withValues(alpha: 0.25),
+                      color.withValues(alpha: 0.0),
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,

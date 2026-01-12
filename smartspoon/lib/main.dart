@@ -1,22 +1,53 @@
 import 'package:flutter/material.dart';
-import 'package:smartspoon/pages/splash_screen.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:smartspoon/state/user_provider.dart';
-import 'package:smartspoon/features/core/theme/app_theme.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart';
-import 'package:smartspoon/features/ble/application/ble_controller.dart';
-import 'package:smartspoon/features/ble/infrastructure/flutter_blue_plus_repository.dart';
-import 'package:smartspoon/features/insights/application/insights_controller.dart';
-import 'package:smartspoon/features/insights/infrastructure/mock_insights_repository.dart';
-import 'package:smartspoon/services/unified_data_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
+import 'package:smartspoon/core/core.dart';
+import 'package:smartspoon/core/providers/theme_provider.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/features/auth/index.dart';
+import 'package:smartspoon/features/onboarding/index.dart';
+import 'package:smartspoon/features/devices/index.dart';
+import 'package:smartspoon/features/insights/index.dart';
+import 'package:smartspoon/features/notifications/domain/services/notification_service.dart';
+import 'package:smartspoon/features/notifications/providers/notification_provider.dart';
+import 'package:smartspoon/core/services/scheduled_sync_service.dart';
 
 Future<void> main() async {
+  // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  GoogleFonts.config.allowRuntimeFetching = kIsWeb;
+
+  // Initialize Firebase
+  await Firebase.initializeApp();
+
+  // Initialize Notification Service
+  await NotificationService().initialize();
+
+  // Initialize Scheduled Sync (Daily at 11 PM)
+  await ScheduledSyncService.initializeScheduledSync();
+
+  // Configure system UI overlay style for better appearance
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.white,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
+  // Set preferred orientations (optional - remove if you want landscape support)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // Configure Google Fonts
+  GoogleFonts.config.allowRuntimeFetching = true;
 
   // Set up global error handlers
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -31,116 +62,94 @@ Future<void> main() async {
     return true; // Handled
   };
 
-  // Initialize Firebase with proper error handling
-  String? firebaseError;
-  try {
-    final options = DefaultFirebaseOptions.currentPlatform;
-    if (kIsWeb &&
-        (options.appId.isEmpty || options.appId.contains('PLACEHOLDER'))) {
-      firebaseError = 'Firebase not configured for web platform';
-      debugPrint(
-        'Skipping Firebase initialization on web due to placeholder/empty appId.',
-      );
-    } else {
-      await Firebase.initializeApp(options: options);
-      debugPrint('Firebase initialized successfully');
-    }
-  } catch (e) {
-    firebaseError = 'Firebase initialization failed: ${e.toString()}';
-    debugPrint(firebaseError);
-  }
+  // Configure cache manager for better performance
+  _configureCacheManager();
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()..loadTheme()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
-        ChangeNotifierProvider(
-          create: (_) => BleController(FlutterBluePlusRepository())..init(),
+        
+        // 1. Create UnifiedDataService first
+        ChangeNotifierProvider(create: (_) => UnifiedDataService()),
+        
+        // 2. Create Repository using UnifiedDataService (Create ONCE, don't listen to updates)
+        Provider<LiveInsightsRepository>(
+          create: (context) => LiveInsightsRepository(context.read<UnifiedDataService>()),
+          dispose: (_, repo) => repo.dispose(),
         ),
-        // Insights Controller - provides meal/tremor/bite data
-        ChangeNotifierProvider(
-          create: (_) => InsightsController(MockInsightsRepository())..init(),
+        
+        // 3. Create InsightsController using Repository (Create ONCE)
+        ChangeNotifierProvider<InsightsController>(
+          create: (context) => InsightsController(
+            context.read<LiveInsightsRepository>(),
+          )..init(),
         ),
-        // Unified Data Service - bridges BLE and Insights data
-        ChangeNotifierProxyProvider2<BleController, InsightsController,
-            UnifiedDataService>(
-          create: (context) => UnifiedDataService(
-            bleController: context.read<BleController>(),
-            insightsController: context.read<InsightsController>(),
-          ),
-          update: (context, ble, insights, previous) =>
-              previous ??
-              UnifiedDataService(
-                bleController: ble,
-                insightsController: insights,
-              ),
-        ),
-        // Provide firebase error state
-        Provider<String?>.value(value: firebaseError),
+        
+        // 4. Notification Provider
+        ChangeNotifierProvider(create: (_) => NotificationProvider()..initialize()),
       ],
-      child: const MyApp(),
+      child: Builder(
+        builder: (context) {
+          // 4. Break circular dependency: Inject Controller into DataService after creation
+          // We do this in a child Builder to ensure providers are ready
+          final controller = context.read<InsightsController>();
+          final dataService = context.read<UnifiedDataService>();
+          
+          if (dataService.insightsController == null) {
+            dataService.insightsController = controller;
+            // Re-attach listener if needed
+            controller.addListener(dataService.notifyUpdate);
+          }
+          
+          return const MyApp();
+        },
+      ),
     ),
   );
 }
 
-class ThemeProvider with ChangeNotifier {
-  ThemeMode _themeMode = ThemeMode.light;
-  static const String _themeKey = 'theme_mode';
+/// Configure cache manager for optimal performance
+void _configureCacheManager() {
+  // Configure cached network image settings
+  CachedNetworkImage.logLevel = CacheManagerLogLevel.warning;
 
-  ThemeMode get themeMode => _themeMode;
-
-  /// Load saved theme preference from SharedPreferences
-  Future<void> loadTheme() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedTheme = prefs.getString(_themeKey);
-      if (savedTheme != null) {
-        _themeMode = savedTheme == 'dark' ? ThemeMode.dark : ThemeMode.light;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('Failed to load theme preference: $e');
-    }
-  }
-
-  Future<void> toggleTheme() async {
-    _themeMode = _themeMode == ThemeMode.light
-        ? ThemeMode.dark
-        : ThemeMode.light;
-    notifyListeners();
-
-    // Save preference
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _themeKey,
-        _themeMode == ThemeMode.dark ? 'dark' : 'light',
-      );
-    } catch (e) {
-      debugPrint('Failed to save theme preference: $e');
-    }
-  }
+  // You can customize the cache manager here if needed
+  // Example: set custom cache duration, max cache size, etc.
 }
+
+// ThemeProvider class removed - imported from core implementation
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData lightTheme = AppTheme.light();
-    final ThemeData darkTheme = AppTheme.dark();
-
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'i-Spoon',
-          theme: lightTheme,
-          darkTheme: darkTheme,
+          theme: AppTheme.lightTheme(),
+          darkTheme: AppTheme.darkTheme(),
           themeMode: themeProvider.themeMode,
           scrollBehavior: AppScrollBehavior(),
           home: const SplashScreen(),
+          // Performance improvements
+          builder: (context, child) {
+            // Ensure text scale factor doesn't exceed reasonable limits
+            final mediaQuery = MediaQuery.of(context);
+            final constrainedTextScale = mediaQuery.textScaler.clamp(
+              minScaleFactor: 0.8,
+              maxScaleFactor: 1.3,
+            );
+
+            return MediaQuery(
+              data: mediaQuery.copyWith(textScaler: constrainedTextScale),
+              child: child!,
+            );
+          },
         );
       },
     );

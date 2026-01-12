@@ -120,7 +120,6 @@ class MockInsightsRepository implements InsightsRepository {
         BiteEvent(
           index: i + 1,
           timestamp: t,
-          weightGrams: 6 + rnd.nextDouble() * 6,
           foodTempC: 40 + rnd.nextDouble() * 8,
           tremorMagnitude: 0.2 + rnd.nextDouble() * 1.6,
           type: type,
@@ -151,5 +150,76 @@ class MockInsightsRepository implements InsightsRepository {
       avgMealDurationMin: duration,
       tremorIndexOverTime: tremor,
     );
+  }
+
+  @override
+  Future<List<DailyBiteSummary>> getDailyBiteSummaries({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final summaries = <DailyBiteSummary>[];
+    final rnd = Random(42);
+    var cursor = DateTime(start.year, start.month, start.day);
+    while (!cursor.isAfter(end)) {
+      final bites = 30 + rnd.nextInt(25);
+      final avgDuration = 10 + rnd.nextDouble() * 8;
+      final totalDuration = avgDuration * (1 + rnd.nextDouble() * 2);
+      final pace = avgDuration <= 0 ? 0 : bites / avgDuration;
+      
+      // Generate meal breakdown
+      final breakfast = (bites * 0.3).round();
+      final lunch = (bites * 0.4).round();
+      final dinner = (bites * 0.2).round();
+      final snacks = bites - breakfast - lunch - dinner;
+
+      summaries.add(
+        DailyBiteSummary(
+          date: cursor,
+          totalBites: bites,
+          avgMealDurationMin: double.parse(avgDuration.toStringAsFixed(1)),
+          totalDurationMin: double.parse(totalDuration.toStringAsFixed(1)),
+          avgPaceBpm: double.parse(pace.toStringAsFixed(2)),
+          mealBites: {
+            'Breakfast': breakfast,
+            'Lunch': lunch,
+            'Dinner': dinner,
+            'Snacks': snacks,
+          },
+        ),
+      );
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    return summaries;
+  }
+
+  @override
+  Future<List<DailyTremorSummary>> getDailyTremorSummaries({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final rnd = Random(99);
+    final entries = <DailyTremorSummary>[];
+    var cursor = DateTime(start.year, start.month, start.day);
+    while (!cursor.isAfter(end)) {
+      final avgMag = 0.3 + rnd.nextDouble() * 1.2;
+      final peakMag = avgMag + rnd.nextDouble() * 0.8;
+      final avgFreq = 4.5 + rnd.nextDouble() * 2.0;
+      final level = peakMag < 0.6
+          ? TremorLevel.low
+          : peakMag < 1.4
+              ? TremorLevel.moderate
+              : TremorLevel.high;
+      entries.add(
+        DailyTremorSummary(
+          date: cursor,
+          avgMagnitude: double.parse(avgMag.toStringAsFixed(2)),
+          peakMagnitude: double.parse(peakMag.toStringAsFixed(2)),
+          avgFrequencyHz: double.parse(avgFreq.toStringAsFixed(2)),
+          dominantLevel: level,
+        ),
+      );
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    return entries;
   }
 }

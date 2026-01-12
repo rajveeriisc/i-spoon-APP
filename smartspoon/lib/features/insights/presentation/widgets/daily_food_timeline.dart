@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../domain/models.dart';
 import 'dart:math';
 
@@ -23,6 +24,13 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..forward();
+    
+    // Set initial selection to last day after frame build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+         // This will be effectively set in build method logic if -1
+      });
+    });
   }
 
   @override
@@ -34,7 +42,6 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final size = MediaQuery.of(context).size;
 
     // Aggregate events into bites and time (minutes) per day for last 7 days
     final now = DateTime.now();
@@ -81,6 +88,12 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
     }
 
     final keys = biteBuckets.keys.toList()..sort();
+    
+    // Set default selection if not set
+    if (_selectedIndex == -1 && keys.isNotEmpty) {
+      _selectedIndex = keys.length - 1;
+    }
+
     double minutesMax = 0;
     double bitesMax = 0;
     for (final d in keys) {
@@ -108,35 +121,28 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
       const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       return names[d.weekday - 1];
     }
+    
+    String fullDateLabel(DateTime d) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${dayLabel(d)}, ${d.day} ${months[d.month - 1]}';
+    }
 
     // Compute nicer Y axes
     final interval = max(2, (minutesNiceMax / 5).round());
 
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: size.width * 0.05),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [
-                  const Color(0xFF2C2C2E),
-                  const Color(0xFF1C1C1E),
-                ]
-              : [
-                  Colors.white,
-                  const Color(0xFFF8F9FA),
-                ],
-        ),
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C3E50) : const Color(0xFFE2E8F0),
+        ),
         boxShadow: [
           BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.5)
-                : Colors.grey.withValues(alpha: 0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -144,49 +150,39 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF667EEA),
-                      const Color(0xFF764BA2),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Weekly History',
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : const Color(0xFF2D3748),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: const [
+                      _LegendDot(color: Color(0xFF4A90E2), label: 'Time (min)'),
+                      SizedBox(width: 12),
+                      _LegendDot(color: Color(0xFFFFB74D), label: 'Bites'),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.insert_chart_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Weekly Time & Bites',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: const [
-              _LegendDot(color: Color(0xFF007AFF), label: 'Time (min)'),
-              SizedBox(width: 16),
-              _LegendDot(color: Color(0xFFFFB100), label: 'Bites'),
-            ],
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
+          
+          // Chart
           AnimatedBuilder(
             animation: _animationController,
             builder: (context, child) {
               return SizedBox(
-                height: 240,
+                height: 200,
                 child: LineChart(
                   LineChartData(
                     minX: 0,
@@ -199,58 +195,19 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                       horizontalInterval: interval.toDouble(),
                       getDrawingHorizontalLine: (value) => FlLine(
                         color: isDark
-                            ? Colors.grey.withValues(alpha: 0.15)
-                            : Colors.grey.withValues(alpha: 0.1),
+                            ? Colors.grey.withOpacity(0.1)
+                            : Colors.grey.withOpacity(0.1),
                         strokeWidth: 1,
                         dashArray: [5, 5],
                       ),
                     ),
                     borderData: FlBorderData(show: false),
                     titlesData: FlTitlesData(
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 40,
-                          interval: interval.toDouble(),
-                          getTitlesWidget: (v, meta) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: Text(
-                              v.toInt().toString(),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: isDark
-                                    ? Colors.grey[400]
-                                    : Colors.grey[600],
-                              ),
-                            ),
-                          ),
-                        ),
+                      leftTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false), // Hide left titles for cleaner look
                       ),
-                      rightTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 40,
-                          interval:
-                              max(1.0, (bitesNiceMax / 5).roundToDouble()) *
-                              scaleFactor,
-                          getTitlesWidget: (v, meta) {
-                            final raw = (v / scaleFactor).round();
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Text(
-                                raw.toString(),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                      rightTitles: const AxisTitles(
+                         sideTitles: SideTitles(showTitles: false),
                       ),
                       topTitles: const AxisTitles(
                         sideTitles: SideTitles(showTitles: false),
@@ -258,7 +215,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          reservedSize: 32,
+                          reservedSize: 30,
                           getTitlesWidget: (value, meta) {
                             final idx = value.toInt();
                             if (idx < 0 || idx >= keys.length) {
@@ -267,31 +224,18 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                             final isSelected = _selectedIndex == idx;
                             return Padding(
                               padding: const EdgeInsets.only(top: 8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
+                              child: Text(
+                                dayLabel(keys[idx]),
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.w500,
                                   color: isSelected
-                                      ? const Color(0xFF007AFF)
-                                          .withValues(alpha: 0.15)
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  dayLabel(keys[idx]),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.w500,
-                                    color: isSelected
-                                        ? const Color(0xFF007AFF)
-                                        : (isDark
-                                            ? Colors.grey[400]
-                                            : Colors.grey[600]),
-                                  ),
+                                      ? const Color(0xFF4A90E2)
+                                      : (isDark
+                                          ? Colors.grey[400]
+                                          : Colors.grey[500]),
                                 ),
                               ),
                             );
@@ -301,6 +245,10 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                     ),
                     lineTouchData: LineTouchData(
                       enabled: true,
+                      handleBuiltInTouches: true,
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipItems: (spots) => spots.map((e) => null).toList(), // Disable built-in tooltip
+                      ),
                       touchCallback: (event, response) {
                         if (response?.lineBarSpots != null &&
                             response!.lineBarSpots!.isNotEmpty) {
@@ -310,36 +258,23 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                           });
                         }
                       },
-                      touchTooltipData: LineTouchTooltipData(
-                        tooltipRoundedRadius: 12,
-                        tooltipPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        getTooltipItems: (spots) {
-                          return spots.map((s) {
-                            final idx = s.x.toInt();
-                            final d = keys[idx];
-                            final minutes = (timeBuckets[d] ?? 0).toDouble();
-                            final bites = (biteBuckets[d] ?? 0).toDouble();
-                            final isTime = s.bar.color == const Color(0xFF007AFF);
-                            final label = isTime ? 'Time' : 'Bites';
-                            final value = isTime
-                                ? '${minutes.toStringAsFixed(0)} min'
-                                : bites.toStringAsFixed(0);
-                            return LineTooltipItem(
-                              '${dayLabel(d)}\n$label: $value',
-                              TextStyle(
-                                color: isTime
-                                    ? const Color(0xFF007AFF)
-                                    : const Color(0xFFFFB100),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            );
-                          }).toList();
-                        },
-                      ),
+                      getTouchedSpotIndicator: (LineChartBarData barData, List<int> spotIndexes) {
+                        return spotIndexes.map((spotIndex) {
+                          return TouchedSpotIndicatorData(
+                            FlLine(color: const Color(0xFF4A90E2), strokeWidth: 2, dashArray: [5, 5]),
+                            FlDotData(
+                              getDotPainter: (spot, percent, barData, index) {
+                                return FlDotCirclePainter(
+                                  radius: 6,
+                                  color: Colors.white,
+                                  strokeWidth: 3,
+                                  strokeColor: barData.color ?? Colors.black,
+                                );
+                              },
+                            ),
+                          );
+                        }).toList();
+                      },
                     ),
                     lineBarsData: [
                       LineChartBarData(
@@ -348,32 +283,20 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                                 .ceil())
                             .toList(),
                         isCurved: true,
-                        curveSmoothness: 0.4,
-                        color: const Color(0xFF007AFF),
-                        barWidth: 3.5,
+                        curveSmoothness: 0.35,
+                        color: const Color(0xFF4A90E2),
+                        barWidth: 3,
                         isStrokeCapRound: true,
-                        dotData: FlDotData(
-                          show: true,
-                          getDotPainter: (spot, percent, barData, index) {
-                            return FlDotCirclePainter(
-                              radius: 5,
-                              color: const Color(0xFF007AFF),
-                              strokeWidth: 2,
-                              strokeColor: Colors.white,
-                            );
-                          },
-                        ),
+                        dotData: FlDotData(show: false),
                         belowBarData: BarAreaData(
                           show: true,
                           gradient: LinearGradient(
                             colors: [
-                              const Color(0xFF007AFF).withValues(alpha: 0.3),
-                              const Color(0xFF007AFF).withValues(alpha: 0.1),
-                              Colors.transparent,
+                              const Color(0xFF4A90E2).withOpacity(0.2),
+                              const Color(0xFF4A90E2).withOpacity(0.0),
                             ],
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            stops: const [0.0, 0.5, 1.0],
                           ),
                         ),
                       ),
@@ -384,34 +307,11 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                                 .ceil())
                             .toList(),
                         isCurved: true,
-                        curveSmoothness: 0.4,
-                        color: const Color(0xFFFFB100),
-                        barWidth: 3.5,
+                        curveSmoothness: 0.35,
+                        color: const Color(0xFFFFB74D),
+                        barWidth: 3,
                         isStrokeCapRound: true,
-                        dotData: FlDotData(
-                          show: true,
-                          getDotPainter: (spot, percent, barData, index) {
-                            return FlDotCirclePainter(
-                              radius: 5,
-                              color: const Color(0xFFFFB100),
-                              strokeWidth: 2,
-                              strokeColor: Colors.white,
-                            );
-                          },
-                        ),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          gradient: LinearGradient(
-                            colors: [
-                              const Color(0xFFFFB100).withValues(alpha: 0.3),
-                              const Color(0xFFFFB100).withValues(alpha: 0.1),
-                              Colors.transparent,
-                            ],
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            stops: const [0.0, 0.5, 1.0],
-                          ),
-                        ),
+                        dotData: FlDotData(show: false),
                       ),
                     ],
                   ),
@@ -419,8 +319,112 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
               );
             },
           ),
+
+          const SizedBox(height: 20),
+
+          // Detail Section below graph
+          if (_selectedIndex >= 0 && _selectedIndex < keys.length)
+            _buildDetailSection(
+              context, 
+              keys[_selectedIndex], 
+              timeBuckets[keys[_selectedIndex]] ?? 0, 
+              biteBuckets[keys[_selectedIndex]] ?? 0,
+              fullDateLabel(keys[_selectedIndex]),
+            ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDetailSection(
+    BuildContext context, 
+    DateTime date, 
+    double minutes, 
+    int bites,
+    String dateLabel,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withOpacity(0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            dateLabel,
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.white70 
+                  : Colors.black87,
+            ),
+          ),
+          Row(
+            children: [
+              _DetailItem(
+                value: '${minutes.toInt()}m',
+                label: 'Duration',
+                color: const Color(0xFF4A90E2),
+              ),
+              Container(
+                height: 24,
+                width: 1,
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                color: Theme.of(context).dividerColor,
+              ),
+              _DetailItem(
+                value: '$bites',
+                label: 'Bites',
+                color: const Color(0xFFFFB74D),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailItem extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+
+  const _DetailItem({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.outfit(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: GoogleFonts.outfit(
+            fontSize: 12,
+            color: Theme.of(context).brightness == Brightness.dark 
+                ? Colors.white54 
+                : Colors.black54,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -433,45 +437,27 @@ class _LegendDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withValues(alpha: 0.3),
-          width: 1,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.4),
-                  blurRadius: 4,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: GoogleFonts.outfit(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.grey[300] : Colors.grey[700],
           ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.grey[300] : Colors.grey[700],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

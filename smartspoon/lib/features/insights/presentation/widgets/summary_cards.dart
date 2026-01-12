@@ -6,57 +6,64 @@ class SummaryCards extends StatelessWidget {
     super.key,
     required this.totalBites,
     required this.paceBpm,
-    required this.tremorIndex,
+    this.onTotalBitesTap,
+    this.onPaceTap,
   });
 
   final int totalBites;
   final double paceBpm;
-  final int tremorIndex;
+  final VoidCallback? onTotalBitesTap;
+  final VoidCallback? onPaceTap;
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final cardWidth = width * 0.45;
-    return Semantics(
-      label: 'Summary cards: total bites, eating pace, tremor index',
-      child: SizedBox(
-        height: 190,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.symmetric(horizontal: width * 0.05),
-          children: [
-            _SummaryCard(
-              title: 'Total Bites',
-              value: totalBites.toString(),
-              icon: Icons.restaurant,
-              color: const Color(0xFF34C759),
-              width: cardWidth,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final isTight = availableWidth < 400;
+        final cardWidth = isTight ? availableWidth * 0.45 : (availableWidth - 32) / 2;
+        
+        return Semantics(
+          label: 'Summary cards: total bites, eating pace',
+          child: SizedBox(
+            height: 180,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.zero,
+              children: [
+                _SummaryCard(
+                  title: 'Total Bites',
+                  value: totalBites.toString(),
+                  icon: Icons.restaurant_menu_rounded,
+                  color: const Color(0xFF34C759),
+                  width: cardWidth,
+                  onTap: onTotalBitesTap,
+                  gradientColors: [
+                    const Color(0xFF34C759).withValues(alpha: 0.1),
+                    const Color(0xFF34C759).withValues(alpha: 0.05),
+                  ],
+                ),
+                const SizedBox(width: 16),
+                _SummaryCard(
+                  title: 'Eating Pace',
+                  value: paceBpm.toStringAsFixed(1),
+                  unit: 'bites/min',
+                  icon: Icons.speed_rounded,
+                  color: const Color(0xFFFFB100),
+                  width: cardWidth,
+                  onTap: onPaceTap,
+                  gradientColors: [
+                    const Color(0xFFFFB100).withValues(alpha: 0.1),
+                    const Color(0xFFFFB100).withValues(alpha: 0.05),
+                  ],
+                ),
+              ],
             ),
-            _SummaryCard(
-              title: 'Eating Pace',
-              value: paceBpm.toStringAsFixed(1),
-              unit: 'bites/min',
-              icon: Icons.speed,
-              color: const Color(0xFFFFB100),
-              width: cardWidth,
-            ),
-            _SummaryCard(
-              title: 'Tremor Index',
-              value: tremorIndexLabel(tremorIndex),
-              icon: Icons.back_hand,
-              color: const Color(0xFF007AFF),
-              width: cardWidth,
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
-  }
-
-  String tremorIndexLabel(int index) {
-    if (index < 35) return 'Low';
-    if (index < 65) return 'Moderate';
-    return 'High';
   }
 }
 
@@ -68,6 +75,8 @@ class _SummaryCard extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.width,
+    this.onTap,
+    required this.gradientColors,
   });
 
   final String title;
@@ -76,54 +85,105 @@ class _SummaryCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final double width;
+  final VoidCallback? onTap;
+  final List<Color> gradientColors;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: width,
-      margin: const EdgeInsets.only(right: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1F1F1F) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.39)
-                : Colors.grey.withValues(alpha: 0.16),
-            blurRadius: 10,
-            offset: const Offset(0, 6),
+    
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        width: width,
+        padding: const EdgeInsets.all(14), // Reduced from 20
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.transparent,
+            width: 1,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.1),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
             ),
-            padding: const EdgeInsets.all(10),
-            child: Icon(icon, color: color, size: 24),
+          ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark 
+              ? [const Color(0xFF2C2C2E), const Color(0xFF1C1C1E)]
+              : [Colors.white, const Color(0xFFF8F9FA)],
           ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: GoogleFonts.lato(fontSize: 32, fontWeight: FontWeight.bold),
-          ),
-          if (unit != null)
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisSize: MainAxisSize.min, // Prevent overflow
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8), // Reduced from 10
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: color, size: 20), // Reduced from 22
+                ),
+                if (onTap != null)
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  ),
+              ],
+            ),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  value,
+                  style: GoogleFonts.outfit(
+                    fontSize: 24, // Reduced from 28
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF1A1A1A),
+                    height: 1.1,
+                  ),
+                ),
+                if (unit != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    unit!,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12, // Reduced from 13
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
             Text(
-              unit!,
-              style: GoogleFonts.lato(fontSize: 12, color: Colors.grey),
+              title,
+              style: GoogleFonts.outfit(
+                fontSize: 13, // Reduced from 14
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.grey[500] : Colors.grey[500],
+              ),
             ),
-          const Spacer(),
-          Text(
-            title,
-            style: GoogleFonts.lato(fontSize: 14, color: Colors.grey),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
