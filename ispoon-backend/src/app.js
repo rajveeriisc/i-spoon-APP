@@ -64,7 +64,8 @@ app.options("*", cors());
 
 app.use(cookieParser());
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true })); // Support nested objects in form data
+
 
 // Serve static uploads
 app.use("/uploads", (req, res, next) => {
@@ -160,8 +161,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Note: Password reset is handled by Firebase (no custom page needed)
 
-export default app;
-
 // 404 handler
 // eslint-disable-next-line no-unused-vars
 app.use((req, res, _next) => {
@@ -171,4 +170,6 @@ app.use((req, res, _next) => {
 // Global error middleware (must be last)
 app.use(errorMiddleware);
 
+// Export app AFTER all middleware is registered
+export default app;
 

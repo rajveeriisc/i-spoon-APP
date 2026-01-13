@@ -291,12 +291,46 @@ class NotificationService {
 
   /// Navigate to appropriate screen based on action type
   void _navigateToScreen(String actionType, dynamic actionData) {
-    // TODO: Implement navigation using NavigatorKey or GetIt service
     if (kDebugMode) print('Navigate to: $actionType with data: $actionData');
-    // Example:
-    // if (actionType == 'open_insights') {
-    //   navigatorKey.currentState?.pushNamed('/insights');
-    // }
+    
+    // Parse action data if it's a string
+    Map<String, dynamic>? parsedData;
+    if (actionData is String) {
+      try {
+        parsedData = jsonDecode(actionData);
+      } catch (e) {
+        if (kDebugMode) print('Error parsing action data: $e');
+      }
+    } else if (actionData is Map) {
+      parsedData = Map<String, dynamic>.from(actionData);
+    }
+
+    // Use the global navigator key to navigate
+    // Note: This requires a GlobalKey<NavigatorState> to be set up in main.dart
+    // For now, we'll just log the action. Implement navigation when GlobalKey is available.
+    
+    // Example implementation (uncomment when GlobalKey is set up):
+    /*
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    
+    switch (actionType) {
+      case 'open_insights':
+        Navigator.of(context).pushNamed('/insights');
+        break;
+      case 'open_tremor_analysis':
+        Navigator.of(context).pushNamed('/tremor-analysis');
+        break;
+      case 'open_temperature':
+        Navigator.of(context).pushNamed('/temperature');
+        break;
+      case 'open_profile':
+        Navigator.of(context).pushNamed('/profile');
+        break;
+      default:
+        if (kDebugMode) print('Unknown action type: $actionType');
+    }
+    */
   }
 
   /// Get channel ID based on notification type

@@ -21,14 +21,8 @@ Future<void> main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
+  // Initialize Firebase (required before runApp)
   await Firebase.initializeApp();
-
-  // Initialize Notification Service
-  await NotificationService().initialize();
-
-  // Initialize Scheduled Sync (Daily at 11 PM)
-  await ScheduledSyncService.initializeScheduledSync();
 
   // Configure system UI overlay style for better appearance
   SystemChrome.setSystemUIOverlayStyle(
@@ -64,6 +58,9 @@ Future<void> main() async {
 
   // Configure cache manager for better performance
   _configureCacheManager();
+
+  // Initialize services in background to prevent ANR
+  _initializeServicesInBackground();
 
   runApp(
     MultiProvider(
@@ -166,3 +163,25 @@ class AppScrollBehavior extends MaterialScrollBehavior {
     return child;
   }
 }
+
+/// Initialize services in background to prevent blocking main thread and ANR
+void _initializeServicesInBackground() {
+  Future.microtask(() async {
+    try {
+      // Initialize Notification Service
+      await NotificationService().initialize();
+      debugPrint('✅ NotificationService initialized in background');
+    } catch (e) {
+      debugPrint('⚠️  NotificationService initialization failed: $e');
+    }
+
+    try {
+      // Initialize Scheduled Sync (Daily at 11 PM)
+      await ScheduledSyncService.initializeScheduledSync();
+      debugPrint('✅ ScheduledSyncService initialized in background');
+    } catch (e) {
+      debugPrint('⚠️  ScheduledSyncService initialization failed: $e');
+    }
+  });
+}
+

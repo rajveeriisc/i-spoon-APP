@@ -130,7 +130,8 @@ class FCMService {
                 token: fcmToken
             }));
 
-            const response = await this.messaging.sendAll(messages);
+            // Use sendEach instead of deprecated sendAll (firebase-admin v13+)
+            const response = await this.messaging.sendEach(messages);
             console.log(`[FCMService] Batch sent: ${response.successCount}/${messages.length} successful`);
 
             return {

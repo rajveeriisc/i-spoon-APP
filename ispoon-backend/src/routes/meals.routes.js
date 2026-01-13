@@ -16,6 +16,6 @@ router.delete("/:id", MealsController.deleteMeal);
 
 // Batch data insertion
 router.post("/:id/bites", MealsController.addBitesToMeal);
-router.post("/:id/temperature", MealsController.addTemperatureLogsToMeal);
+router.post("/:id/temperature", MealsController.updateMealTemperature);
 
 export default router;

@@ -1,6 +1,5 @@
 import * as MealModel from "../models/mealModel.js";
 import * as BiteModel from "../models/biteModel.js";
-import * as TemperatureModel from "../models/temperatureModel.js";
 import NotificationService from "../services/notificationService.js";
 
 /**
@@ -44,7 +43,6 @@ export const getMealDetails = async (req, res) => {
 
         // Get associated data
         const bites = await BiteModel.getBitesForMeal(id);
-        const temperatureLogs = await TemperatureModel.getTemperatureLogsForMeal(id);
         const tremorAnalysis = await BiteModel.getTremorAnalysisForMeal(id);
 
         res.json({
@@ -52,8 +50,8 @@ export const getMealDetails = async (req, res) => {
             meal: {
                 ...meal,
                 bites,
-                temperature_logs: temperatureLogs,
                 tremor_analysis: tremorAnalysis
+                // Temperature data is now in meal columns: avg_food_temp_c, max_food_temp_c, min_food_temp_c
             }
         });
     } catch (error) {
@@ -173,12 +171,12 @@ export const addBitesToMeal = async (req, res) => {
     }
 };
 
-// POST /api/meals/:id/temperature - Add temperature logs to meal (batch)
-export const addTemperatureLogsToMeal = async (req, res) => {
+// POST /api/meals/:id/temperature - Update meal temperature data
+export const updateMealTemperature = async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.user.id;
-        const { temperature_logs } = req.body;
+        const { avg_food_temp_c, max_food_temp_c, min_food_temp_c } = req.body;
 
         const meal = await MealModel.getMealById(id);
 
@@ -190,22 +188,20 @@ export const addTemperatureLogsToMeal = async (req, res) => {
             return res.status(403).json({ success: false, message: "Unauthorized" });
         }
 
-        // Add meal_id to each log
-        const logsWithMealId = temperature_logs.map(log => ({ ...log, meal_id: id }));
-
-        const createdLogs = await TemperatureModel.createTemperatureLogsBatch(logsWithMealId);
-
-        // Calculate and update meal temperature stats
-        const stats = await TemperatureModel.getTemperatureStatsForMeal(id);
-        await MealModel.updateMeal(id, {
-            avg_food_temp_c: stats.avg_food_temp,
-            max_food_temp_c: stats.max_food_temp,
-            min_food_temp_c: stats.min_food_temp
+        // Update meal temperature columns directly
+        const updatedMeal = await MealModel.updateMeal(id, {
+            avg_food_temp_c,
+            max_food_temp_c,
+            min_food_temp_c
         });
 
-        res.status(201).json({ success: true, temperature_logs: createdLogs });
+        res.status(200).json({
+            success: true,
+            meal: updatedMeal,
+            message: "Temperature data updated successfully"
+        });
     } catch (error) {
-        console.error("Add temperature logs error:", error);
-        res.status(500).json({ success: false, message: "Failed to add temperature logs" });
+        console.error("Update temperature error:", error);
+        res.status(500).json({ success: false, message: "Failed to update temperature data" });
     }
 };

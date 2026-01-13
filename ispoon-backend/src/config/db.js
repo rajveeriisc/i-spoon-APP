@@ -19,7 +19,7 @@ const shouldUseSSL = (() => {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false, 
+  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
   // TODO: Enable certificate validation in production
   // Connection pool configuration
   max: 20, // Maximum pool size
@@ -34,13 +34,13 @@ const baseReconnectDelay = 1000; // 1 second
 
 pool.on("error", async (err) => {
   console.error("❌ Postgres pool error (idle client):", err.message);
-  
+
   // Attempt to recover connection
   if (reconnectAttempts < maxReconnectAttempts) {
     reconnectAttempts++;
     const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts - 1); // Exponential backoff
     console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
-    
+
     setTimeout(async () => {
       try {
         await pool.query("SELECT 1");
@@ -55,9 +55,13 @@ pool.on("error", async (err) => {
   }
 });
 
-// Lightweight startup health check without holding a client
-pool
-  .query("SELECT 1")
-  .then(() => console.log("✅ Postgres reachable"))
-  .catch((err) => console.error("❌ Postgres startup check failed:", err.message));
-  
+// Lightweight startup health check - properly awaited
+(async () => {
+  try {
+    await pool.query("SELECT 1");
+    console.log("✅ Postgres reachable");
+  } catch (err) {
+    console.error("❌ Postgres startup check failed:", err.message);
+    console.error("⚠️  Server will continue but database operations will fail");
+  }
+})();
