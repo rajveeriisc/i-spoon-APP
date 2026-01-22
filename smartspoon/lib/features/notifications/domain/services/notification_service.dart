@@ -298,7 +298,16 @@ class NotificationService {
   void _navigateToScreen(String actionType, dynamic actionData) {
     if (kDebugMode) print('Navigate to: $actionType with data: $actionData');
     
-    // Parse action data if it's a string
+    // Use the global navigator key to navigate
+    // Note: This requires a GlobalKey<NavigatorState> to be set up in main.dart
+    // For now, we'll just log the action. Implement navigation when GlobalKey is available.
+    
+    // Example implementation (uncomment when GlobalKey is set up):
+    /*
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+    
+    // Parse action data if needed
     Map<String, dynamic>? parsedData;
     if (actionData is String) {
       try {
@@ -309,25 +318,16 @@ class NotificationService {
     } else if (actionData is Map) {
       parsedData = Map<String, dynamic>.from(actionData);
     }
-
-    // Use the global navigator key to navigate
-    // Note: This requires a GlobalKey<NavigatorState> to be set up in main.dart
-    // For now, we'll just log the action. Implement navigation when GlobalKey is available.
-    
-    // Example implementation (uncomment when GlobalKey is set up):
-    /*
-    final context = navigatorKey.currentContext;
-    if (context == null) return;
     
     switch (actionType) {
       case 'open_insights':
         Navigator.of(context).pushNamed('/insights');
         break;
       case 'open_tremor_analysis':
-        Navigator.of(context).pushNamed('/tremor-analysis');
+        Navigator.of(context).pushNamed('/tremor-analysis', arguments: parsedData);
         break;
       case 'open_temperature':
-        Navigator.of(context).pushNamed('/temperature');
+        Navigator.of(context).pushNamed('/temperature', arguments: parsedData);
         break;
       case 'open_profile':
         Navigator.of(context).pushNamed('/profile');

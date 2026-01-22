@@ -11,7 +11,6 @@ import 'package:smartspoon/core/providers/theme_provider.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
 import 'package:smartspoon/features/auth/index.dart';
 import 'package:smartspoon/features/onboarding/index.dart';
-import 'package:smartspoon/features/devices/index.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/features/notifications/domain/services/notification_service.dart';
 import 'package:smartspoon/features/notifications/providers/notification_provider.dart';
