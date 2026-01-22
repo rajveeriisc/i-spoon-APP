@@ -9,7 +9,7 @@ export const getBitesForMeal = async (mealId) => {
     const res = await pool.query(
         `SELECT 
       id, meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz,
-      weight_grams, is_valid, sequence_number, created_at
+      is_valid, sequence_number, created_at
     FROM bites
     WHERE meal_id = $1
     ORDER BY sequence_number ASC`,
@@ -26,7 +26,6 @@ export const createBite = async (biteData) => {
         timestamp,
         tremor_magnitude_rad_s = null,
         tremor_frequency_hz = null,
-        weight_grams = null,
         is_valid = true,
         sequence_number
     } = biteData;
@@ -34,10 +33,10 @@ export const createBite = async (biteData) => {
     const res = await pool.query(
         `INSERT INTO bites (
       meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz,
-      weight_grams, is_valid, sequence_number
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      is_valid, sequence_number
+    ) VALUES ($1, $2, $3, $4, $5, $6)
     RETURNING *`,
-        [meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz, weight_grams, is_valid, sequence_number]
+        [meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz, is_valid, sequence_number]
     );
 
     return res.rows[0];
@@ -51,16 +50,15 @@ export const createBitesBatch = async (bites) => {
     const placeholders = [];
 
     bites.forEach((bite, index) => {
-        const offset = index * 7;
+        const offset = index * 6;
         placeholders.push(
-            `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`
+            `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`
         );
         values.push(
             bite.meal_id,
             bite.timestamp,
             bite.tremor_magnitude_rad_s || null,
             bite.tremor_frequency_hz || null,
-            bite.weight_grams || null,
             bite.is_valid !== undefined ? bite.is_valid : true,
             bite.sequence_number
         );
@@ -69,7 +67,7 @@ export const createBitesBatch = async (bites) => {
     const query = `
     INSERT INTO bites (
       meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz,
-      weight_grams, is_valid, sequence_number
+      is_valid, sequence_number
     ) VALUES ${placeholders.join(', ')}
     RETURNING *
   `;
