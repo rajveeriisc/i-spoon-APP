@@ -77,7 +77,7 @@ export const validateUpdateMe = (req, res, next) => {
 
   if (b.notifications_enabled !== undefined) {
     if (typeof b.notifications_enabled !== 'boolean' &&
-        typeof b.notifications_enabled !== 'string') {
+      typeof b.notifications_enabled !== 'string') {
       errors.notifications_enabled = 'notifications_enabled must be a boolean';
     } else {
       b.notifications_enabled = sanitizeBoolean(b.notifications_enabled);
@@ -105,3 +105,31 @@ export const validateUpdateMe = (req, res, next) => {
 };
 
 
+
+export const validateCreateMeal = (req, res, next) => {
+  const b = req.body || {};
+  const errors = {};
+
+  if (!b.meal_type) {
+    errors.meal_type = 'meal_type is required';
+  } else if (!['Breakfast', 'Lunch', 'Dinner', 'Snack'].includes(b.meal_type)) {
+    errors.meal_type = 'meal_type must be one of: Breakfast, Lunch, Dinner, Snack';
+  }
+
+  if (!b.started_at) {
+    errors.started_at = 'started_at is required';
+  } else if (isNaN(Date.parse(b.started_at))) {
+    errors.started_at = 'started_at must be a valid ISO date string';
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({ message: 'Validation failed', errors });
+  }
+
+  next();
+};
+
+export const validateUpdateMeal = (req, res, next) => {
+  // Similar to create, but fields are optional
+  next(); // Placeholder for now or strict validation if needed
+};

@@ -3,6 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:smartspoon/core/config/app_config.dart';
 import '../../../auth/domain/services/auth_service.dart';
 
 /// Top-level function for handling background messages
@@ -27,10 +28,7 @@ class NotificationService {
   bool _initialized = false;
   String? _fcmToken;
 
-  final String _baseUrl = const String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:5000',
-  );
+  final String _baseUrl = AppConfig.apiBaseUrl;
 
   /// Initialize notification service
   Future<void> initialize() async {
@@ -161,12 +159,19 @@ class NotificationService {
     }
   }
 
+
+
   /// Register FCM token with backend
   Future<void> _registerFCMToken(String token) async {
     try {
       final authToken = await AuthService.getValidToken();
-      if (authToken == null) return;
+      if (authToken == null) {
+          if (kDebugMode) print('No auth token available to register FCM token');
+          return;
+      }
 
+      // Note: Assuming /api/notifications/fcm-token is the correct endpoint based on existing code.
+      // If 404, check backend routes.
       final response = await http.post(
         Uri.parse('$_baseUrl/api/notifications/fcm-token'),
         headers: {
@@ -179,10 +184,10 @@ class NotificationService {
       if (response.statusCode == 200) {
         if (kDebugMode) print('FCM token registered successfully');
       } else {
-        if (kDebugMode) print('Failed to register FCM token: ${response.body}');
+        if (kDebugMode) print('Failed to register FCM token: ${response.statusCode} - ${response.body}');
       }
-    } catch (e) {
-      if (kDebugMode) print('Error registering FCM token: $e');
+    } catch (e, stackTrace) {
+      if (kDebugMode) print('Error registering FCM token: $e\n$stackTrace');
     }
   }
 
@@ -395,6 +400,8 @@ class NotificationService {
       if (kDebugMode) print('Error marking notification action: $e');
     }
   }
+
+
 
   /// Get FCM token
   String? get fcmToken => _fcmToken;

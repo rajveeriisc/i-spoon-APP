@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/auth/providers/user_provider.dart';
 import 'package:smartspoon/features/profile/presentation/widgets/profile_redesign_widgets.dart';
+import 'package:smartspoon/features/auth/domain/services/auth_service.dart';
 
 class DailyBitesScreen extends StatefulWidget {
   const DailyBitesScreen({super.key});
@@ -30,28 +31,49 @@ class _DailyBitesScreenState extends State<DailyBitesScreen> {
     _snackBites = userProvider.snackGoal.toDouble();
   }
 
-  void _save() {
-    final total = _breakfastBites + _lunchBites + _dinnerBites + _snackBites;
-    
-    // Update UserProvider
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    userProvider.setFromMap({
-      'daily_goal': total.toInt(),
-      'breakfast_goal': _breakfastBites.toInt(),
-      'lunch_goal': _lunchBites.toInt(),
-      'dinner_goal': _dinnerBites.toInt(),
-      'snack_goal': _snackBites.toInt(),
-      // Preserve other fields
-      'id': userProvider.id,
-      'email': userProvider.email,
-      'name': userProvider.name,
-      'avatar_url': userProvider.avatarUrl,
-    });
-    
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Daily bite goal updated to ${total.toInt()}!')),
-    );
+  bool _isSaving = false;
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final total = _breakfastBites + _lunchBites + _dinnerBites + _snackBites;
+      
+      final updates = {
+        'daily_goal': total.toInt(),
+        'breakfast_goal': _breakfastBites.toInt(),
+        'lunch_goal': _lunchBites.toInt(),
+        'dinner_goal': _dinnerBites.toInt(),
+        'snack_goal': _snackBites.toInt(),
+      };
+
+      // Call API
+      final res = await AuthService.updateProfile(data: updates);
+      
+      if (mounted) {
+        // Update UserProvider with response (which now includes bite_goals)
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        final userData = res['user'];
+        if (userData != null) {
+          userProvider.setFromMap(userData as Map<String, dynamic>);
+        }
+        
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Daily bite goal updated to ${total.toInt()}!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save goals: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/features/insights/presentation/bite_history_page.dart';
 import 'package:smartspoon/features/insights/presentation/widgets/tremor_breakdown_chart.dart';
+import 'package:smartspoon/features/auth/providers/user_provider.dart';
 
 
 /// Wellness-focused Analytics Dashboard
@@ -293,7 +294,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
         ),
         const SizedBox(height: 12),
 
-        _buildMealDistributionChart(),
+        _buildMealDistributionChart(controller),
 
         const SizedBox(height: 24),
 
@@ -338,11 +339,48 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
     );
   }
 
-  Widget _buildMealDistributionChart() {
+  Widget _buildMealDistributionChart(InsightsController controller) {
+    // 1. Get Goals from UserProvider
+    final user = Provider.of<UserProvider>(context);
+    
+    // 2. Get Actuals from InsightsController (Today's Summary)
+    final today = DateTime.now();
+    DailyBiteSummary? todaySummary;
+    try {
+      todaySummary = controller.dailySummaries.firstWhere(
+        (s) => s.date.year == today.year && s.date.month == today.month && s.date.day == today.day,
+      );
+    } catch (_) {
+      // No summary for today yet
+    }
+
+    int getActual(String key) {
+       if (todaySummary == null) return 0;
+       // Try Title Case then lowercase
+       return todaySummary.mealBites[key] ?? todaySummary.mealBites[key.toLowerCase()] ?? 0;
+    }
+
     final meals = [
-      {'name': 'Breakfast', 'bites': 45, 'percentage': 30},
-      {'name': 'Lunch', 'bites': 52, 'percentage': 35},
-      {'name': 'Dinner', 'bites': 50, 'percentage': 35},
+      {
+        'name': 'Breakfast', 
+        'bites': getActual('Breakfast'), 
+        'goal': user.breakfastGoal,
+      },
+      {
+        'name': 'Lunch', 
+        'bites': getActual('Lunch'), 
+        'goal': user.lunchGoal,
+      },
+      {
+        'name': 'Dinner', 
+        'bites': getActual('Dinner'), 
+        'goal': user.dinnerGoal,
+      },
+      {
+        'name': 'Snacks', 
+        'bites': getActual('Snacks'), 
+        'goal': user.snackGoal,
+      },
     ];
 
     return Container(
@@ -354,6 +392,13 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
       ),
       child: Column(
         children: meals.map((meal) {
+          final bites = meal['bites'] as int;
+          final goal = meal['goal'] as int;
+          final safeGoal = goal > 0 ? goal : 1; // Prevent div by zero
+          final percentVal = bites / safeGoal;
+          final displayPercent = (percentVal * 100).toInt();
+          final barPercent = percentVal.clamp(0.0, 1.0);
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Column(
@@ -370,7 +415,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                       ),
                     ),
                     Text(
-                      '${meal['bites']} bites',
+                      '$bites / $goal bites',
                       style: GoogleFonts.outfit(
                         fontSize: 12,
                         color: const Color(0xFF64748B),
@@ -389,7 +434,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                       ),
                     ),
                     FractionallySizedBox(
-                      widthFactor: (meal['percentage'] as int) / 100,
+                      widthFactor: barPercent,
                       child: Container(
                         height: 32,
                         decoration: BoxDecoration(
@@ -404,7 +449,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                       bottom: 0,
                       child: Center(
                         child: Text(
-                          '${meal['percentage']}%',
+                          '$displayPercent%',
                           style: GoogleFonts.outfit(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,

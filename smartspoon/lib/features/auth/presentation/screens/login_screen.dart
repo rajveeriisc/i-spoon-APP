@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/auth/index.dart';
 import 'package:smartspoon/features/home/index.dart';
-import 'package:smartspoon/main.dart';
 import 'package:smartspoon/core/core.dart';
 import 'package:smartspoon/core/providers/theme_provider.dart';
-import 'package:smartspoon/core/services/email_service.dart';
-// Backend services removed
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -96,21 +93,8 @@ class _LoginScreenState extends State<LoginScreen> {
             listen: false,
           ).setFromMap(userMap);
            
-           // ✨ Send welcome email if user just verified their email
-           // This is a fire-and-forget call - don't block login if it fails
-           try {
-             final email = userMap['email'] as String?;
-             final name = userMap['name'] as String?;
-             if (email != null) {
-               EmailService.sendWelcomeEmail(
-                 email: email,
-                 name: name ?? email.split('@')[0],
-               );
-             }
-           } catch (emailError) {
-             // Silently fail - email is not critical
-             debugPrint('Welcome email failed: $emailError');
-           }
+           // Note: Welcome email is now handled by the backend on first login after verification.
+           // No need to call it from the client on every login.
         } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -312,26 +296,16 @@ class _LoginScreenState extends State<LoginScreen> {
             listen: false,
           ).setFromMap(userMap);
           
-          // Send welcome email
-          try {
-            final email = userMap['email'] as String?;
-            final name = userMap['name'] as String?;
-            if (email != null) {
-              EmailService.sendWelcomeEmail(
-                email: email,
-                name: name ?? email.split('@')[0],
-              );
-            }
-          } catch (emailError) {
-            debugPrint('Welcome email failed: $emailError');
-          }
+          
+          // Note: Welcome email is now handled by the backend on first login after verification.
+          // No need to call it from the client on every login.
         } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to load profile: ${e.toString()}')),
           );
         }
-
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Welcome!')));

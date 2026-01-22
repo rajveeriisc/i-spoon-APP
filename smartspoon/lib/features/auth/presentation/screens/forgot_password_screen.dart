@@ -44,8 +44,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         const SnackBar(content: Text('Failed to send reset link. Try again.')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 

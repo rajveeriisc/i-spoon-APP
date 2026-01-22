@@ -7,6 +7,8 @@ class MealSummary {
   final int tremorIndex; // 0-100
   final DateTime? lastMealStart;
   final DateTime? lastMealEnd;
+  final String? mealType;       // e.g. "Breakfast"
+  final double? durationMinutes; // Pre-calculated duration
 
   const MealSummary({
     required this.totalBites,
@@ -14,6 +16,8 @@ class MealSummary {
     required this.tremorIndex,
     this.lastMealStart,
     this.lastMealEnd,
+    this.mealType,
+    this.durationMinutes,
   });
 }
 

@@ -10,7 +10,6 @@ void main() {
       BiteEvent(
         index: 1,
         timestamp: now.subtract(const Duration(hours: 1)),
-        weightGrams: 8,
         foodTempC: 42,
         tremorMagnitude: 0.3,
         type: BiteEventType.valid,
@@ -18,7 +17,6 @@ void main() {
       BiteEvent(
         index: 2,
         timestamp: now,
-        weightGrams: 7,
         foodTempC: 41,
         tremorMagnitude: 0.4,
         type: BiteEventType.missed,

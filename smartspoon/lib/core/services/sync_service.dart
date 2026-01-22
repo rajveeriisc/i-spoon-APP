@@ -4,16 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/database_service.dart';
 import '../../features/auth/domain/services/auth_service.dart';
+import '../config/app_config.dart';
 
 class SyncService {
   final DatabaseService _db = DatabaseService();
   // AuthService is static, no instance needed
   
-  // Base URL should come from environment config
-  final String _baseUrl = const String.fromEnvironment(
-    'API_BASE_URL', 
-    defaultValue: 'http://10.0.2.2:5000' // Android emulator loopback
-  );
+  // Use centralized AppConfig for base URL
+  final String _baseUrl = AppConfig.apiBaseUrl;
 
   Future<void> syncAll() async {
     if (kDebugMode) print('Starting sync...');

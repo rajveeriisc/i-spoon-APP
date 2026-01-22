@@ -347,16 +347,51 @@ class AuthService {
     }
   }
 
+  /// Get current user ID from stored token
+  static Future<String?> getUserId() async {
+    final token = await getToken();
+    if (token == null) return null;
+    final payload = _JWTDecoder.decodePayload(token);
+    return payload?['id'] as String?;
+  }
+
+  static Completer<String?>? _refreshCompleter;
+
   /// Get token only if it's valid, otherwise clear it
   static Future<String?> getValidToken() async {
+    // Prevent multiple parallel refresh calls
+    if (_refreshCompleter != null) {
+      return _refreshCompleter!.future;
+    }
+
     final token = await getToken();
     if (token == null) {
-      return await _refreshAccessToken();
+      _refreshCompleter = Completer<String?>();
+      try {
+        final newToken = await _refreshAccessToken();
+        _refreshCompleter!.complete(newToken);
+        return newToken;
+      } catch (e) {
+        _refreshCompleter!.complete(null);
+        return null;
+      } finally {
+        _refreshCompleter = null;
+      }
     }
 
     final isValid = await isTokenValid();
     if (!isValid) {
-      return await _refreshAccessToken();
+      _refreshCompleter = Completer<String?>();
+      try {
+        final newToken = await _refreshAccessToken();
+        _refreshCompleter!.complete(newToken);
+        return newToken;
+      } catch (e) {
+        _refreshCompleter!.complete(null);
+        return null;
+      } finally {
+        _refreshCompleter = null;
+      }
     }
 
     return token;

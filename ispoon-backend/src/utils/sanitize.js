@@ -9,7 +9,7 @@
  */
 export function sanitizeHtml(input) {
   if (typeof input !== 'string') return '';
-  
+
   return input
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -23,7 +23,7 @@ export function sanitizeHtml(input) {
  */
 export function sanitizeText(input, maxLength = 500) {
   if (typeof input !== 'string') return '';
-  
+
   return input
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
     .replace(/\s+/g, ' ') // Normalize whitespace
@@ -52,7 +52,7 @@ export function sanitizePhone(input) {
  */
 export function sanitizeUrl(input) {
   if (typeof input !== 'string') return '';
-  
+
   try {
     const url = new URL(input);
     // Only allow http and https protocols
@@ -70,7 +70,7 @@ export function sanitizeUrl(input) {
  */
 export function sanitizeStringArray(input, maxLength = 20, maxItemLength = 100) {
   if (!Array.isArray(input)) return [];
-  
+
   return input
     .filter(item => typeof item === 'string')
     .map(item => sanitizeText(item, maxItemLength))
@@ -103,52 +103,78 @@ export function sanitizeBoolean(input) {
  */
 export function sanitizeUserProfile(data) {
   const sanitized = {};
-  
+
   if (data.name !== undefined) {
     sanitized.name = sanitizeText(data.name, 100);
   }
-  
+
   if (data.phone !== undefined) {
     sanitized.phone = sanitizePhone(data.phone);
   }
-  
+
   if (data.location !== undefined) {
     sanitized.location = sanitizeText(data.location, 200);
   }
-  
+
   if (data.bio !== undefined) {
     sanitized.bio = sanitizeText(data.bio, 500);
   }
-  
+
   if (data.diet_type !== undefined) {
     sanitized.diet_type = sanitizeText(data.diet_type, 50);
   }
-  
+
   if (data.activity_level !== undefined) {
     sanitized.activity_level = sanitizeText(data.activity_level, 50);
   }
-  
+
   if (data.allergies !== undefined) {
     sanitized.allergies = sanitizeStringArray(data.allergies, 20, 100);
   }
-  
+
   if (data.daily_goal !== undefined) {
     sanitized.daily_goal = sanitizeInteger(data.daily_goal, 0, 10000);
   }
-  
+
   if (data.notifications_enabled !== undefined) {
     sanitized.notifications_enabled = sanitizeBoolean(data.notifications_enabled);
   }
-  
+
   if (data.emergency_contact !== undefined) {
     sanitized.emergency_contact = sanitizeText(data.emergency_contact, 100);
   }
-  
+
   if (data.avatar_url !== undefined) {
     // Avatar URLs are internal paths, just sanitize as text
     sanitized.avatar_url = sanitizeText(data.avatar_url, 500);
   }
-  
+
+  if (data.avatar_url !== undefined) {
+    // Avatar URLs are internal paths, just sanitize as text
+    sanitized.avatar_url = sanitizeText(data.avatar_url, 500);
+  }
+
+  // Handle bite goals
+  if (data.breakfast_goal !== undefined) sanitized.breakfast_goal = sanitizeInteger(data.breakfast_goal);
+  if (data.lunch_goal !== undefined) sanitized.lunch_goal = sanitizeInteger(data.lunch_goal);
+  if (data.dinner_goal !== undefined) sanitized.dinner_goal = sanitizeInteger(data.dinner_goal);
+  if (data.snack_goal !== undefined) sanitized.snack_goal = sanitizeInteger(data.snack_goal);
+
+  if (data.bite_goals !== undefined) {
+    // If passed as full object
+    sanitized.bite_goals = data.bite_goals;
+  }
+
+  // Handle profile metadata (age, gender, height, weight)
+  if (data.age !== undefined) sanitized.age = sanitizeInteger(data.age);
+  if (data.gender !== undefined) sanitized.gender = sanitizeText(data.gender, 20);
+  if (data.height !== undefined) sanitized.height = parseFloat(data.height); // or sanitizeFloat if available
+  if (data.weight !== undefined) sanitized.weight = parseFloat(data.weight);
+
+  if (data.profile_metadata !== undefined) {
+    sanitized.profile_metadata = data.profile_metadata;
+  }
+
   return sanitized;
 }
 

@@ -99,7 +99,13 @@ class InsightsController with ChangeNotifier {
       (_repository as dynamic).dispose();
       // ignore: empty_catches
     } catch (_) {}
+  // ... existing methods ...
     super.dispose();
+  }
+  
+  /// Fetch detailed meal records for a specific date (for analysis page)
+  Future<List<MealSummary>> getMealsForDate(DateTime date) async {
+    return _repository.getMealsForDate(date);
   }
 
   /// Fetch tremor data for a specific date range (for history page)

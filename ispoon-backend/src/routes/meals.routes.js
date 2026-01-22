@@ -7,10 +7,12 @@ const router = express.Router();
 // All routes require authentication
 router.use(protect);
 
+import { validateCreateMeal } from "../middleware/validation.js";
+
 // Meal CRUD
 router.get("/", MealsController.getMeals);
 router.get("/:id", MealsController.getMealDetails);
-router.post("/", MealsController.createMeal);
+router.post("/", validateCreateMeal, MealsController.createMeal);
 router.put("/:id", MealsController.updateMeal);
 router.delete("/:id", MealsController.deleteMeal);
 

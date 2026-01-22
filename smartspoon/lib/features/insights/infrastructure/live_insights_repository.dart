@@ -281,5 +281,30 @@ class LiveInsightsRepository implements InsightsRepository {
      
     return summaries;
   }
+
+  @override
+  Future<List<MealSummary>> getMealsForDate(DateTime date) async {
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    
+    // We reuse getMeals but filter locally for simplicity, or we could add a date range query to DatabaseService
+    // Given the scale, fetching recent 100 and filtering is safe enough for MVP
+    final allMeals = await _db.getMeals(limit: 100); 
+    
+    final dayMeals = allMeals.where((m) => 
+      m.startedAt.isAfter(startOfDay.subtract(const Duration(seconds: 1))) && 
+      m.startedAt.isBefore(endOfDay)
+    ).toList();
+
+    return dayMeals.map((m) => MealSummary(
+      totalBites: m.totalBites,
+      eatingPaceBpm: m.avgPaceBpm ?? 0.0,
+      tremorIndex: m.tremorIndex ?? 0,
+      lastMealStart: m.startedAt,
+      lastMealEnd: m.endedAt,
+      mealType: m.mealType ?? 'Snack', // Default to Snack if unknown
+      durationMinutes: m.durationMinutes ?? 0.0,
+    )).toList();
+  }
 }
 

@@ -25,4 +25,7 @@ abstract class InsightsRepository {
     required DateTime start,
     required DateTime end,
   });
+
+  /// Fetch detailed meal records for a specific date (for analysis page)
+  Future<List<MealSummary>> getMealsForDate(DateTime date);
 }

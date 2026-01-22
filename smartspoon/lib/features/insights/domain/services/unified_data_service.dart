@@ -6,6 +6,7 @@ import 'package:smartspoon/core/services/database_service.dart';
 import 'package:smartspoon/core/services/sync_service.dart';
 import 'package:smartspoon/features/devices/index.dart';
 import 'package:smartspoon/features/insights/index.dart';
+import 'package:smartspoon/features/auth/domain/services/auth_service.dart';
 
 /// Unified Data Service - Provides data from insights and real-time BLE
 class UnifiedDataService with ChangeNotifier {
@@ -26,12 +27,8 @@ class UnifiedDataService with ChangeNotifier {
       notifyListeners();
       // Collect temperature if session is active (sampling logic)
       if (isSessionActive && _mcuService.currentData != null) {
-         // Simple sampling: add every update. For optimization, we should throttle this.
-         // Assuming this updates ~1Hz or when data changes.
-         final temp = _mcuService.currentData!.temperature;
-         if (temp > 0) { // filter invalid
-            _sessionTempReadings.add(temp);
-         }
+         // Use safe method to add reading
+         _addTempReading(_mcuService.currentData!.temperature);
       }
     });
 
@@ -121,12 +118,7 @@ class UnifiedDataService with ChangeNotifier {
     return true;
   }
 
-  void _startUsageTimer() {
-    _usageTimer?.cancel();
-    _usageTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      notifyListeners();
-    });
-  }
+
 
   void _stopUsageTimer() {
     _usageTimer?.cancel();
@@ -146,8 +138,10 @@ class UnifiedDataService with ChangeNotifier {
 
   // ... (Existing getters)
 
+  // ... (Existing implementation)
+
   /// Start a new meal session
-  void startSession() {
+  Future<void> startSession() async {
     if (isSessionActive) return;
     
     _sessionStartTime = DateTime.now();
@@ -175,17 +169,20 @@ class UnifiedDataService with ChangeNotifier {
       avgTemp = sum / _sessionTempReadings.length;
     }
 
+    // Get current user ID
+    final userId = await AuthService.getUserId() ?? 'offline_user';
+
     // Create Meal object
     final meal = Meal(
       uuid: _currentMealUuid!,
-      userId: 'current_user',
+      userId: userId, // Uses actual user ID
       startedAt: _sessionStartTime!,
       endedAt: endTime,
       totalBites: totalBites,
       tremorIndex: tremorIndex.round(),
       durationMinutes: duration.inMinutes.toDouble(),
       avgPaceBpm: avgBiteTime > 0 ? 60 / avgBiteTime : 0,
-      avgFoodTemp: avgTemp, // Store the calculated average
+      avgFoodTemp: avgTemp, 
     );
 
     // Save to SQLite
@@ -197,8 +194,36 @@ class UnifiedDataService with ChangeNotifier {
     
     _sessionStartTime = null;
     _currentMealUuid = null;
-    _sessionTempReadings.clear(); // Clear local buffer
+    _sessionTempReadings.clear(); 
     notifyListeners();
+  }
+
+  // Optimize Timer: Debounce notifications to avoid UI jank
+  Timer? _debounceTimer;
+  void _notifyDebounced() {
+    if (_debounceTimer?.isActive ?? false) return;
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      notifyListeners();
+    });
+  }
+
+  void _startUsageTimer() {
+    _usageTimer?.cancel();
+    _usageTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      // Use debounced notification if high frequency updates are expected elsewhere
+      // For seconds timer, it's okay, but let's be safe.
+      notifyListeners(); 
+    });
+  }
+
+  // Memory Safety: Limit stored temperature readings
+  void _addTempReading(double temp) {
+    if (temp <= 0) return;
+    _sessionTempReadings.add(temp);
+    // Keep only last 1000 readings (approx 16 mins at 1Hz) to prevent overflow
+    if (_sessionTempReadings.length > 1000) {
+      _sessionTempReadings.removeRange(0, _sessionTempReadings.length - 1000);
+    }
   }
 
   // ... (Rest of existing methods)

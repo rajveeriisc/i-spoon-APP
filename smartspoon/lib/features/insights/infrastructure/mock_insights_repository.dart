@@ -222,4 +222,38 @@ class MockInsightsRepository implements InsightsRepository {
     }
     return entries;
   }
+
+  @override
+  Future<List<MealSummary>> getMealsForDate(DateTime date) async {
+    final rnd = Random(date.millisecondsSinceEpoch);
+    final count = 3 + rnd.nextInt(2); // 3-4 meals
+    final summaries = <MealSummary>[];
+    
+    // Base times for meals
+    final times = [
+      DateTime(date.year, date.month, date.day, 8, 30),
+      DateTime(date.year, date.month, date.day, 13, 0),
+      DateTime(date.year, date.month, date.day, 19, 30),
+      DateTime(date.year, date.month, date.day, 16, 0), // Snack
+    ];
+    final types = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+
+    for (var i = 0; i < count; i++) {
+       final bites = 20 + rnd.nextInt(40);
+       final duration = 10 + rnd.nextDouble() * 15;
+       final pace = bites / duration;
+       
+       summaries.add(MealSummary(
+         totalBites: bites,
+         eatingPaceBpm: double.parse(pace.toStringAsFixed(1)),
+         tremorIndex: 10 + rnd.nextInt(30),
+         lastMealStart: times[i],
+         lastMealEnd: times[i].add(Duration(minutes: duration.toInt())),
+         mealType: types[i],
+         durationMinutes: double.parse(duration.toStringAsFixed(1)),
+       ));
+    }
+    
+    return summaries;
+  }
 }

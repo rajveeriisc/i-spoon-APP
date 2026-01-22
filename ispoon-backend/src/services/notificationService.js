@@ -156,7 +156,11 @@ class NotificationService {
 
             return pending.length;
         } catch (error) {
-            console.error('[NotificationService] Error processing pending notifications:', error);
+            if (error.code === 'EAI_AGAIN' || error.code === 'ETIMEDOUT') {
+                console.warn(`[NotificationService] Network error connection to DB (processPendingNotifications): ${error.code} - Request skipped.`);
+            } else {
+                console.error('[NotificationService] Error processing pending notifications:', error);
+            }
             return 0;
         }
     }

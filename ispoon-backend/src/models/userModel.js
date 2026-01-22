@@ -88,7 +88,7 @@ export const updateUserProfile = async (id, fields) => {
   setClauses.push(`updated_at=NOW()`);
 
   const query = `UPDATE users SET ${setClauses.join(", ")} WHERE id=$${values.length + 1
-    } RETURNING id, email, name, phone, location, bio, diet_type, activity_level, allergies, daily_goal, notifications_enabled, emergency_contact, avatar_url`;
+    } RETURNING id, email, name, phone, location, bio, diet_type, activity_level, allergies, daily_goal, notifications_enabled, emergency_contact, avatar_url, profile_metadata, bite_goals`;
   values.push(id);
 
   const res = await pool.query(query, values);

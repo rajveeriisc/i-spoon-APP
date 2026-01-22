@@ -3,7 +3,7 @@ import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
 import '../models/meal.dart';
 import '../models/bite.dart';
-import '../models/temperature_log.dart';
+// import '../models/temperature_log.dart'; // Removed: unused
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();

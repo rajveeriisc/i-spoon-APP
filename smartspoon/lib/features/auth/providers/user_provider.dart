@@ -44,16 +44,41 @@ class UserProvider with ChangeNotifier {
     emergencyContact = user['emergency_contact'] as String?;
     avatarUrl = user['avatar_url'] as String?;
     
-    // Parse extended fields
+    // Parse extended fields (check root first, then nested in profile_metadata)
     age = user['age'] as int?;
     gender = user['gender'] as String?;
     height = (user['height'] as num?)?.toDouble();
     weight = (user['weight'] as num?)?.toDouble();
-    
+
+    if (user['profile_metadata'] != null) {
+      final meta = user['profile_metadata'];
+      if (meta is Map) {
+         if (age == null && meta['age'] != null) age = meta['age'] as int;
+         if (gender == null && meta['gender'] != null) gender = meta['gender'] as String;
+         if (height == null && meta['height'] != null) height = (meta['height'] as num).toDouble();
+         if (weight == null && meta['weight'] != null) weight = (meta['weight'] as num).toDouble();
+      }
+    }
+
+    // Check for flattened fields (legacy or manual passed)
     if (user['breakfast_goal'] != null) breakfastGoal = user['breakfast_goal'] as int;
     if (user['lunch_goal'] != null) lunchGoal = user['lunch_goal'] as int;
     if (user['dinner_goal'] != null) dinnerGoal = user['dinner_goal'] as int;
     if (user['snack_goal'] != null) snackGoal = user['snack_goal'] as int;
+
+    // Check for nested bite_goals (standard backend format)
+    if (user['bite_goals'] != null) {
+      final goals = user['bite_goals'];
+      if (goals is Map) {
+         if (goals['breakfast'] != null) breakfastGoal = goals['breakfast'] as int;
+         if (goals['lunch'] != null) lunchGoal = goals['lunch'] as int;
+         if (goals['dinner'] != null) dinnerGoal = goals['dinner'] as int;
+         if (goals['snack'] != null) snackGoal = goals['snack'] as int;
+         if (goals['daily'] != null) dailyGoal = goals['daily'] as int;
+      } else if (goals is String) {
+         // TODO: Handle string parsing if needed, but pg driver usually returns map
+      }
+    }
     
     notifyListeners();
   }
