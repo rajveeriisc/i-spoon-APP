@@ -14,13 +14,12 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   
-  // Controllers for 9 Fields
+  // Controllers
   late TextEditingController _nameCtrl;
   late TextEditingController _emailCtrl;
   late TextEditingController _phoneCtrl;
   late TextEditingController _locationCtrl;
   late TextEditingController _ageCtrl;
-  late TextEditingController _heightCtrl;
   late TextEditingController _weightCtrl;
   
   // Selection / Slider values
@@ -35,10 +34,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     
     _nameCtrl = TextEditingController(text: user.name);
     _emailCtrl = TextEditingController(text: user.email);
-    _phoneCtrl = TextEditingController(text: ''); // Phone missing in User model currently
-    _locationCtrl = TextEditingController(text: ''); // Location missing
+    _phoneCtrl = TextEditingController(text: user.phone ?? '');
+    _locationCtrl = TextEditingController(text: user.location ?? '');
     _ageCtrl = TextEditingController(text: user.age?.toString() ?? '');
-    _heightCtrl = TextEditingController(text: user.height?.toString() ?? '');
     _weightCtrl = TextEditingController(text: user.weight?.toString() ?? '');
     
     _gender = (user.gender != null && user.gender!.isNotEmpty) ? user.gender! : 'Male';
@@ -51,7 +49,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _phoneCtrl.dispose();
     _locationCtrl.dispose();
     _ageCtrl.dispose();
-    _heightCtrl.dispose();
     _weightCtrl.dispose();
     super.dispose();
   }
@@ -64,13 +61,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final updates = {
         'name': _nameCtrl.text.trim(),
-        'email': _emailCtrl.text.trim(),
-        // 'phone': _phoneCtrl.text.trim(), // API dependent
-        // 'location': _locationCtrl.text.trim(),
-        'age': int.tryParse(_ageCtrl.text) ?? 0,
-        'gender': _gender,
-        'height': double.tryParse(_heightCtrl.text) ?? 0.0,
-        'weight': double.tryParse(_weightCtrl.text) ?? 0.0,
+        'phone': _phoneCtrl.text.trim(),
+        'location': _locationCtrl.text.trim(),
+        'profile_metadata': {
+          'age': int.tryParse(_ageCtrl.text),
+          'gender': _gender,
+          'weight': double.tryParse(_weightCtrl.text),
+        },
       };
       
       final res = await AuthService.updateProfile(data: updates);
@@ -174,14 +171,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(child: _buildTextField('Height (cm)', _heightCtrl, Icons.height, keyboardType: TextInputType.number)),
-                        const SizedBox(width: 16),
-                        // Weight field removed
-                        Expanded(child: Container()), 
-                      ],
-                    ),
+                    _buildTextField('Weight (kg)', _weightCtrl, Icons.monitor_weight_outlined, keyboardType: TextInputType.number),
                     
                     
                     const SizedBox(height: 32),

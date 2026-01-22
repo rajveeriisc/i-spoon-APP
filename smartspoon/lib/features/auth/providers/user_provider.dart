@@ -18,7 +18,6 @@ class UserProvider with ChangeNotifier {
   // Extended fields for Profile Redesign
   int? age;
   String? gender;
-  double? height;
   double? weight;
   
   // Meal-specific goals
@@ -47,7 +46,6 @@ class UserProvider with ChangeNotifier {
     // Parse extended fields (check root first, then nested in profile_metadata)
     age = user['age'] as int?;
     gender = user['gender'] as String?;
-    height = (user['height'] as num?)?.toDouble();
     weight = (user['weight'] as num?)?.toDouble();
 
     if (user['profile_metadata'] != null) {
@@ -55,7 +53,6 @@ class UserProvider with ChangeNotifier {
       if (meta is Map) {
          if (age == null && meta['age'] != null) age = meta['age'] as int;
          if (gender == null && meta['gender'] != null) gender = meta['gender'] as String;
-         if (height == null && meta['height'] != null) height = (meta['height'] as num).toDouble();
          if (weight == null && meta['weight'] != null) weight = (meta['weight'] as num).toDouble();
       }
     }

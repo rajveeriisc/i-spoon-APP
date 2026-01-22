@@ -76,7 +76,6 @@ export const updateMe = async (req, res) => {
     if (
       sanitized.age !== undefined ||
       sanitized.gender !== undefined ||
-      sanitized.height !== undefined ||
       sanitized.weight !== undefined
     ) {
       const currentUser = await getUserById(userId);
@@ -86,14 +85,12 @@ export const updateMe = async (req, res) => {
         ...currentMeta,
         ...(sanitized.age !== undefined && { age: sanitized.age }),
         ...(sanitized.gender !== undefined && { gender: sanitized.gender }),
-        ...(sanitized.height !== undefined && { height: sanitized.height }),
         ...(sanitized.weight !== undefined && { weight: sanitized.weight }),
       };
 
       // Cleanup flat fields
       delete sanitized.age;
       delete sanitized.gender;
-      delete sanitized.height;
       delete sanitized.weight;
     }
 
