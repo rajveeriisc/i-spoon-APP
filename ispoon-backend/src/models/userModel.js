@@ -19,16 +19,10 @@ export const updateUserProfile = async (id, fields) => {
     "name",
     "phone",
     "location",
-    "bio",
-    "diet_type",
-    "activity_level",
-    "allergies",
     "daily_goal",
     "notifications_enabled",
-    "emergency_contact",
     "avatar_url",
     "profile_metadata",
-    "bite_goals",
   ];
 
   const setClauses = [];
@@ -50,17 +44,10 @@ export const updateUserProfile = async (id, fields) => {
           "name",
           "phone",
           "location",
-          "bio",
-          "diet_type",
-          "activity_level",
-          "emergency_contact",
           "avatar_url",
         ].includes(key)
       ) {
         value = coerceStringOrNull(value);
-      }
-      if (key === "allergies") {
-        value = Array.isArray(value) ? value : null;
       }
       if (key === "daily_goal") {
         value = typeof value === "number" ? Math.round(value) : null;
@@ -68,7 +55,7 @@ export const updateUserProfile = async (id, fields) => {
       if (key === "notifications_enabled") {
         value = typeof value === "boolean" ? value : null;
       }
-      if (key === "profile_metadata" || key === "bite_goals") {
+      if (key === "profile_metadata") {
         value = typeof value === "object" ? JSON.stringify(value) : null;
       }
 
@@ -79,7 +66,7 @@ export const updateUserProfile = async (id, fields) => {
 
   if (setClauses.length === 0) {
     const res = await pool.query(
-      `SELECT id, email, name, phone, location, bio, diet_type, activity_level, allergies, daily_goal, notifications_enabled, emergency_contact, avatar_url FROM users WHERE id=$1`,
+      `SELECT id, email, name, phone, location, daily_goal, notifications_enabled, avatar_url FROM users WHERE id=$1`,
       [id]
     );
     return res.rows[0];
@@ -88,7 +75,7 @@ export const updateUserProfile = async (id, fields) => {
   setClauses.push(`updated_at=NOW()`);
 
   const query = `UPDATE users SET ${setClauses.join(", ")} WHERE id=$${values.length + 1
-    } RETURNING id, email, name, phone, location, bio, diet_type, activity_level, allergies, daily_goal, notifications_enabled, emergency_contact, avatar_url, profile_metadata, bite_goals`;
+    } RETURNING id, email, name, phone, location, daily_goal, notifications_enabled, avatar_url, profile_metadata`;
   values.push(id);
 
   const res = await pool.query(query, values);
@@ -103,31 +90,12 @@ export const markEmailVerified = async (id) => {
   );
 };
 
-// 🔹 Update profile metadata (age, gender, height, weight)
-export const updateProfileMetadata = async (id, metadata) => {
-  const res = await pool.query(
-    `UPDATE users SET profile_metadata = $1, updated_at = NOW() WHERE id = $2 RETURNING profile_metadata`,
-    [JSON.stringify(metadata), id]
-  );
-  return res.rows[0];
-};
 
-// 🔹 Update bite goals
-export const updateBiteGoals = async (id, goals) => {
-  const res = await pool.query(
-    `UPDATE users SET bite_goals = $1, updated_at = NOW() WHERE id = $2 RETURNING bite_goals`,
-    [JSON.stringify(goals), id]
-  );
-  return res.rows[0];
-};
-
-// 🔹 Get user profile with JSONB fields
 export const getUserProfile = async (id) => {
   const res = await pool.query(
     `SELECT 
-      id, email, name, phone, location, bio, diet_type, activity_level,
-      allergies, daily_goal, notifications_enabled, emergency_contact, avatar_url,
-      profile_metadata, bite_goals, created_at, updated_at
+      id, email, name, phone, location, daily_goal, notifications_enabled, avatar_url,
+      profile_metadata, created_at, updated_at
     FROM users WHERE id = $1`,
     [id]
   );
