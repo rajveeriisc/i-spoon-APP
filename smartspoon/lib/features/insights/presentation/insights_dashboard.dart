@@ -150,7 +150,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             offset: const Offset(0, 2),
             blurRadius: 4,
           ),
@@ -190,7 +190,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             color: isActive
-                ? WellnessColors.primaryBlue.withOpacity(0.05)
+                ? WellnessColors.primaryBlue.withValues(alpha: 0.05)
                 : Colors.transparent,
           ),
           child: Stack(
@@ -438,7 +438,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                       child: Container(
                         height: 32,
                         decoration: BoxDecoration(
-                          color: WellnessColors.primaryBlue.withOpacity(0.8),
+                          color: WellnessColors.primaryBlue.withValues(alpha: 0.8),
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),

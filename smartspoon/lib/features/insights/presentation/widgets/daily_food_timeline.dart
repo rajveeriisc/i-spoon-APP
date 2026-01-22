@@ -140,7 +140,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -195,8 +195,8 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                       horizontalInterval: interval.toDouble(),
                       getDrawingHorizontalLine: (value) => FlLine(
                         color: isDark
-                            ? Colors.grey.withOpacity(0.1)
-                            : Colors.grey.withOpacity(0.1),
+                            ? Colors.grey.withValues(alpha: 0.1)
+                            : Colors.grey.withValues(alpha: 0.1),
                         strokeWidth: 1,
                         dashArray: [5, 5],
                       ),
@@ -292,8 +292,8 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                           show: true,
                           gradient: LinearGradient(
                             colors: [
-                              const Color(0xFF4A90E2).withOpacity(0.2),
-                              const Color(0xFF4A90E2).withOpacity(0.0),
+                              const Color(0xFF4A90E2).withValues(alpha: 0.2),
+                              const Color(0xFF4A90E2).withValues(alpha: 0.0),
                             ],
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
@@ -349,7 +349,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.5),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
         ),
       ),
       child: Row(

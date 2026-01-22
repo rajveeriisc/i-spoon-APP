@@ -128,7 +128,7 @@ class ProfilePage extends StatelessWidget {
                                 title: 'Dark Mode',
                                 trailing: Switch(
                                   value: theme.themeMode == ThemeMode.dark,
-                                  activeColor: kProfilePrimary,
+                                  activeThumbColor: kProfilePrimary,
                                   onChanged: (_) => theme.toggleTheme(),
                                 ),
                               ),
@@ -138,7 +138,7 @@ class ProfilePage extends StatelessWidget {
                               title: 'Notifications',
                               trailing: Switch(
                                 value: user.notificationsEnabled ?? true,
-                                activeColor: kProfilePrimary,
+                                activeThumbColor: kProfilePrimary,
                                 onChanged: (val) {
                                   // Simplified toggle logic handle
                                 },

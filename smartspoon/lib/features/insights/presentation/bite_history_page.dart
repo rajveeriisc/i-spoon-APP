@@ -72,7 +72,7 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: WellnessColors.primaryBlue.withOpacity(0.3)),
+                    border: Border.all(color: WellnessColors.primaryBlue.withValues(alpha: 0.3)),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
@@ -279,7 +279,7 @@ class _MealBreakdownChart extends StatelessWidget {
                       Container(
                         height: 10,
                         decoration: BoxDecoration(
-                          color: WellnessColors.getBorderColor(context).withOpacity(0.3),
+                          color: WellnessColors.getBorderColor(context).withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(5),
                         ),
                       ),
@@ -289,7 +289,7 @@ class _MealBreakdownChart extends StatelessWidget {
                           height: 10,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [WellnessColors.primaryBlue, WellnessColors.primaryBlue.withOpacity(0.6)],
+                              colors: [WellnessColors.primaryBlue, WellnessColors.primaryBlue.withValues(alpha: 0.6)],
                             ),
                             borderRadius: BorderRadius.circular(5),
                           ),
@@ -334,7 +334,7 @@ class _OverviewTile extends StatelessWidget {
         border: Border.all(color: WellnessColors.getBorderColor(context)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -377,7 +377,7 @@ class _OverviewTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -487,7 +487,7 @@ class _BiteDataTable extends StatelessWidget {
       builder: (context, constraints) {
         final table = DataTable(
           headingRowColor: WidgetStateProperty.all(
-            WellnessColors.primaryBlue.withOpacity(0.05),
+            WellnessColors.primaryBlue.withValues(alpha: 0.05),
           ),
           columnSpacing: 20,
           horizontalMargin: 20,
@@ -510,7 +510,7 @@ class _BiteDataTable extends StatelessWidget {
             border: Border.all(color: WellnessColors.getBorderColor(context)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -544,14 +544,14 @@ class _EmailRequestCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            WellnessColors.primaryBlue.withOpacity(0.1),
-            WellnessColors.primaryGreen.withOpacity(0.1),
+            WellnessColors.primaryBlue.withValues(alpha: 0.1),
+            WellnessColors.primaryGreen.withValues(alpha: 0.1),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: WellnessColors.primaryBlue.withOpacity(0.2)),
+        border: Border.all(color: WellnessColors.primaryBlue.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

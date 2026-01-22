@@ -108,7 +108,7 @@ class TremorBreakdownChart extends StatelessWidget {
                       child: Container(
                         height: 32,
                         decoration: BoxDecoration(
-                          color: (level['color'] as Color).withOpacity(0.8),
+                          color: (level['color'] as Color).withValues(alpha: 0.8),
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),

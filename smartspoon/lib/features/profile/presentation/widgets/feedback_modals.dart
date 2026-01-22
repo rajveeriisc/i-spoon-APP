@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -214,6 +215,14 @@ class _FeedbackModalState extends State<_FeedbackModal> {
             height: 50,
             child: ElevatedButton(
               onPressed: () {
+                // TODO: Send feedback to backend with rating and text
+                // Example: await FeedbackService.submitFeedback(
+                //   rating: _rating,
+                //   message: _controller.text,
+                // );
+                if (kDebugMode) {
+                  print('Feedback submitted - Rating: $_rating, Message: ${_controller.text}');
+                }
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Feedback sent!')),

@@ -104,7 +104,7 @@ class _TremorHistoryPageState extends State<TremorHistoryPage> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: WellnessColors.primaryBlue.withOpacity(0.3)),
+                    border: Border.all(color: WellnessColors.primaryBlue.withValues(alpha: 0.3)),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
@@ -275,7 +275,7 @@ class _OverviewTile extends StatelessWidget {
         border: Border.all(color: WellnessColors.getBorderColor(context)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -318,7 +318,7 @@ class _OverviewTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -372,7 +372,7 @@ class _TremorDataTable extends StatelessWidget {
       builder: (context, constraints) {
         final table = DataTable(
           headingRowColor: WidgetStateProperty.all(
-            Theme.of(context).colorScheme.primary.withOpacity(0.08),
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
           ),
           columns: columns,
           rows: rows,
@@ -441,14 +441,14 @@ class _EmailRequestCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            WellnessColors.primaryBlue.withOpacity(0.1),
-            WellnessColors.primaryGreen.withOpacity(0.1),
+            WellnessColors.primaryBlue.withValues(alpha: 0.1),
+            WellnessColors.primaryGreen.withValues(alpha: 0.1),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: WellnessColors.primaryBlue.withOpacity(0.2)),
+        border: Border.all(color: WellnessColors.primaryBlue.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

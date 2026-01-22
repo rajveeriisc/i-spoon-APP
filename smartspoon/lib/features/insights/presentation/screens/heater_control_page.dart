@@ -246,7 +246,7 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
                               child: Switch(
                                 value: _isHeaterOn,
                                 onChanged: _toggleHeater,
-                                activeColor: Colors.white,
+                                activeThumbColor: Colors.white,
                                 activeTrackColor: AppTheme.turquoise,
                                 inactiveThumbColor: isDarkMode ? Colors.grey[400] : Colors.white,
                                 inactiveTrackColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],

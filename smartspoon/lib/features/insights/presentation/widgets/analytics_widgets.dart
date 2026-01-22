@@ -49,7 +49,7 @@ class HeroHeader extends StatelessWidget {
                 subtitle,
                 style: GoogleFonts.outfit(
                   fontSize: 14,
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                 ),
               ),
             ],
@@ -61,7 +61,7 @@ class HeroHeader extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.sync, color: Colors.white, size: 20),
@@ -93,7 +93,7 @@ class CombinedMetricCard extends StatelessWidget {
         border: Border.all(color: WellnessColors.getBorderColor(context)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             offset: const Offset(0, 2),
             blurRadius: 4,
           ),
@@ -114,7 +114,7 @@ class CombinedMetricCard extends StatelessWidget {
             ),
             Container(
               width: 1,
-              color: WellnessColors.getBorderColor(context).withOpacity(0.5),
+              color: WellnessColors.getBorderColor(context).withValues(alpha: 0.5),
             ),
             Expanded(
               child: InkWell(
@@ -209,7 +209,7 @@ class _MetricItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -236,7 +236,7 @@ class _MetricItem extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [color, color.withOpacity(0.6)],
+              colors: [color, color.withValues(alpha: 0.6)],
             ),
             borderRadius: BorderRadius.circular(3),
           ),
@@ -345,7 +345,7 @@ class AIInsightCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             offset: const Offset(0, 2),
             blurRadius: 4,
           ),
