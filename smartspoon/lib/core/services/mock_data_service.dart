@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/models/meal.dart';
 import '../../core/models/bite.dart';
 import '../../core/services/database_service.dart';
+import 'package:flutter/foundation.dart';
 
 class MockDataService {
   final DatabaseService _db = DatabaseService();
@@ -13,17 +14,17 @@ class MockDataService {
     // Check if data exists first to avoid double seeding
     final existing = await _db.getMeals(limit: 1);
     if (existing.isNotEmpty && !forceReseed) {
-      print('Database already contains data. Skipping seed. (Use forceReseed=true to override)');
+      if (kDebugMode) print('Database already contains data. Skipping seed. (Use forceReseed=true to override)');
       return;
     }
     
     // Clear existing data if force reseeding
     if (forceReseed && existing.isNotEmpty) {
-      print('Force reseeding: Clearing existing data...');
+      if (kDebugMode) print('Force reseeding: Clearing existing data...');
       // Note: You may want to add a clearAll() method to DatabaseService
     }
 
-    print('Seeding database with $days days of mock data...');
+    if (kDebugMode) print('Seeding database with $days days of mock data...');
     final now = DateTime.now();
     final List<Meal> meals = [];
     final List<Bite> bites = [];
@@ -55,7 +56,7 @@ class MockDataService {
       await _db.insertBites(bites.sublist(i, end));
     }
 
-    print('Seeding complete: ${meals.length} meals, ${bites.length} bites.');
+    if (kDebugMode) print('Seeding complete: ${meals.length} meals, ${bites.length} bites.');
   }
 
   void _generateMeal(DateTime date, String type, int hour, List<Meal> meals, List<Bite> bites) {

@@ -117,7 +117,7 @@ class DeviceDetailsScreen extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDarkMode
-              ? [AppTheme.navy, AppTheme.navy.withOpacity(0.8)]
+              ? [AppTheme.navy, AppTheme.navy.withValues(alpha: 0.8)]
               : [AppTheme.turquoise, AppTheme.sky],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -125,7 +125,7 @@ class DeviceDetailsScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -139,7 +139,7 @@ class DeviceDetailsScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -166,7 +166,7 @@ class DeviceDetailsScreen extends StatelessWidget {
                       'Smart Spoon Device',
                       style: GoogleFonts.lato(
                         fontSize: 14,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
                   ],
@@ -175,7 +175,7 @@ class DeviceDetailsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Divider(color: Colors.white.withOpacity(0.3)),
+          Divider(color: Colors.white.withValues(alpha: 0.3)),
           const SizedBox(height: 12),
           _buildInfoRow(Icons.fingerprint, 'Device ID', deviceId),
           const SizedBox(height: 8),
@@ -188,13 +188,13 @@ class DeviceDetailsScreen extends StatelessWidget {
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, color: Colors.white.withOpacity(0.8), size: 18),
+        Icon(icon, color: Colors.white.withValues(alpha: 0.8), size: 18),
         const SizedBox(width: 8),
         Text(
           '$label: ',
           style: GoogleFonts.lato(
             fontSize: 13,
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
           ),
         ),
         Expanded(
@@ -225,11 +225,11 @@ class DeviceDetailsScreen extends StatelessWidget {
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.sky.withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -247,7 +247,7 @@ class DeviceDetailsScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: color, size: 28),

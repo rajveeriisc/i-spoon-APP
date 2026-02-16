@@ -536,9 +536,13 @@ class _EmailRequestCard extends StatelessWidget {
     String selectedLabel;
     if (days <= 7) {
       selectedLabel = 'this week';
-    } else if (days <= 30) selectedLabel = 'this month';
-    else if (days <= 90) selectedLabel = 'last 3 months';
-    else selectedLabel = 'selected period';
+    } else if (days <= 30) {
+      selectedLabel = 'this month';
+    } else if (days <= 90) {
+      selectedLabel = 'last 3 months';
+    } else {
+      selectedLabel = 'selected period';
+    }
         
     return Container(
       padding: const EdgeInsets.all(24),

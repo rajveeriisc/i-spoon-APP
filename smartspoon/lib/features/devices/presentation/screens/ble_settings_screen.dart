@@ -207,7 +207,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDarkMode
-              ? [AppTheme.navy, AppTheme.navy.withOpacity(0.8)]
+              ? [AppTheme.navy, AppTheme.navy.withValues(alpha: 0.8)]
               : [AppTheme.turquoise, AppTheme.sky],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -215,7 +215,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -226,7 +226,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -255,7 +255,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
                       : 'Disconnected',
                   style: GoogleFonts.lato(
                     fontSize: 14,
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha: 0.9),
                   ),
                 ),
               ],
@@ -342,11 +342,11 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.sky.withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -387,7 +387,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.sky.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -466,7 +466,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.sky.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -502,7 +502,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
               scrollDirection: Axis.horizontal,
               child: DataTable(
                 headingRowColor: WidgetStateProperty.all(
-                  AppTheme.turquoise.withOpacity(0.1),
+                  AppTheme.turquoise.withValues(alpha: 0.1),
                 ),
                 columns: [
                   DataColumn(
@@ -535,7 +535,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.sky.withOpacity(0.1),
+              color: AppTheme.sky.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -584,7 +584,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.sky.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -713,7 +713,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.sky.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -849,11 +849,11 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.sky.withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -885,7 +885,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: result.detected ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                  color: result.detected ? Colors.red.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -960,7 +960,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

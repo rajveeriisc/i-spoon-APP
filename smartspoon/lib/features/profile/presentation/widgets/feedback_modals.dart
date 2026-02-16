@@ -220,8 +220,7 @@ class _FeedbackModalState extends State<_FeedbackModal> {
                 //   rating: _rating,
                 //   message: _controller.text,
                 // );
-                if (kDebugMode) {
-                  print('Feedback submitted - Rating: $_rating, Message: ${_controller.text}');
+                if (kDebugMode) { print('Feedback submitted - Rating: $_rating, Message: ${_controller.text}');
                 }
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(

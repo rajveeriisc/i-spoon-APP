@@ -466,7 +466,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
   Widget _buildConnectedDeviceCard(
       BuildContext context, DiscoveredDevice? device, String deviceId, bool isDarkMode) {
-    final primaryColor = Colors.green; // Green for connected
+    // Green for connected
     final cardColor = isDarkMode ? const Color(0xFF233044) : Colors.white;
     final borderColor = isDarkMode ? Colors.green.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.5);
 
@@ -645,9 +645,13 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
     int bars = 0;
     if (rssi > -60) {
       bars = 4;
-    } else if (rssi > -70) bars = 3;
-    else if (rssi > -80) bars = 2;
-    else if (rssi > -90) bars = 1;
+    } else if (rssi > -70) {
+      bars = 3;
+    } else if (rssi > -80) {
+      bars = 2;
+    } else if (rssi > -90) {
+      bars = 1;
+    }
     
     final color = Theme.of(context).colorScheme.secondary;
 

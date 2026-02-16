@@ -32,8 +32,7 @@ class DatabaseService {
   }
 
   Future<void> _createDb(Database db, int version) async {
-    if (kDebugMode) {
-      print('Creating local database tables...');
+    if (kDebugMode) { print('Creating local database tables...');
     }
 
     // Meals Table
@@ -157,14 +156,12 @@ class DatabaseService {
 
     // Temperature Logs Table REMOVED per user request (storing stats in meals instead)
     
-    if (kDebugMode) {
-      print('Database tables created successfully');
+    if (kDebugMode) { print('Database tables created successfully');
     }
   }
 
   Future<void> _upgradeDb(Database db, int oldVersion, int newVersion) async {
-    if (kDebugMode) {
-      print('Upgrading database from version $oldVersion to $newVersion');
+    if (kDebugMode) { print('Upgrading database from version $oldVersion to $newVersion');
     }
     
     // For version 2, 3, or 4: Drop all tables and recreate to ensure clean state
@@ -179,8 +176,7 @@ class DatabaseService {
       // Recreate all tables
       await _createDb(db, newVersion);
       
-      if (kDebugMode) {
-        print('Database reset complete. Tables recreated with version $newVersion schema.');
+      if (kDebugMode) { print('Database reset complete. Tables recreated with version $newVersion schema.');
       }
     }
   }
