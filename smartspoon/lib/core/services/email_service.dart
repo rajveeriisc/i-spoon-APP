@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:smartspoon/core/config/app_config.dart';
+import 'package:flutter/foundation.dart';
 
 class EmailService {
   EmailService._();
@@ -23,14 +24,14 @@ class EmailService {
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ Welcome email sent to $email');
+        if (kDebugMode) print('✅ Welcome email sent to $email');
         return true;
       } else {
-        print('❌ Failed to send welcome email: ${response.statusCode}');
+        if (kDebugMode) print('❌ Failed to send welcome email: ${response.statusCode}');
         return false;
       }
     } catch (e) {
-      print('❌ Welcome email error: $e');
+      if (kDebugMode) print('❌ Welcome email error: $e');
       return false; // Don't block login if email fails
     }
   }

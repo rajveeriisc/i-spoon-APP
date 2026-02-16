@@ -185,11 +185,14 @@ export const verifyFirebaseToken = async (req, res) => {
       },
     });
   } catch (err) {
-    try { console.error("verifyFirebaseToken error:", err); } catch (_) { }
+    console.error("verifyFirebaseToken error:", err);
     const msg = String(err?.message || "");
     const isAuth = /id token|auth|credential|parse private key|pem/i.test(msg);
     const status = isAuth ? 401 : 500;
-    return res.status(status).json({ message: isAuth ? "Invalid Firebase ID token" : "Internal error" });
+    return res.status(status).json({
+      message: isAuth ? "Invalid Firebase ID token" : "Internal error",
+      error: process.env.NODE_ENV === 'development' ? msg : undefined
+    });
   }
 };
 
@@ -258,16 +261,15 @@ export const requestEmailVerification = async (req, res) => {
       });
     }
   } catch (err) {
-    try {
-      console.error("requestEmailVerification error:", err);
-    } catch (_) { }
+    console.error("requestEmailVerification error:", err);
 
     const msg = String(err?.message || "");
     const isAuth = /id token|auth|credential|parse private key|pem/i.test(msg);
     const status = isAuth ? 401 : 500;
 
     return res.status(status).json({
-      message: isAuth ? "Invalid Firebase ID token" : "Internal error"
+      message: isAuth ? "Invalid Firebase ID token" : "Internal error",
+      error: process.env.NODE_ENV === 'development' ? msg : undefined
     });
   }
 };

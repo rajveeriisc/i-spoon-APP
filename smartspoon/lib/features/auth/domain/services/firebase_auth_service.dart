@@ -107,7 +107,7 @@ class FirebaseAuthService {
         // ✨ SEND VERIFICATION EMAIL (This was missing!)
         if (!user.emailVerified) {
           await user.sendEmailVerification();
-          print('✅ Verification email sent to: $email');
+          if (kDebugMode) print('✅ Verification email sent to: $email');
         }
 
         // Return user data (backend will require verification before issuing JWT)
@@ -243,7 +243,7 @@ class FirebaseAuthService {
       }
 
       await user.sendEmailVerification();
-      print('✅ Verification email sent to: ${user.email}');
+      if (kDebugMode) print('✅ Verification email sent to: ${user.email}');
       
       return {
         'success': true,
@@ -274,7 +274,7 @@ class FirebaseAuthService {
       await user.reload(); // Refresh user data from Firebase
       return _auth.currentUser?.emailVerified ?? false;
     } catch (e) {
-      print('Error checking email verification: $e');
+      if (kDebugMode) print('Error checking email verification: $e');
       return false;
     }
   }

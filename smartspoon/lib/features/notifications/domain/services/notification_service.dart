@@ -9,10 +9,9 @@ import '../../../auth/domain/services/auth_service.dart';
 /// Top-level function for handling background messages
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  if (kDebugMode) {
-    print('Handling background message: ${message.messageId}');
-    print('Title: ${message.notification?.title}');
-    print('Body: ${message.notification?.body}');
+  if (kDebugMode) { print('Handling background message: ${message.messageId}');
+    if (kDebugMode) print('Title: ${message.notification?.title}');
+    if (kDebugMode) print('Body: ${message.notification?.body}');
   }
 }
 
@@ -202,10 +201,9 @@ class NotificationService {
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
-    if (kDebugMode) {
-      print('Foreground message received: ${message.messageId}');
-      print('Title: ${message.notification?.title}');
-      print('Body: ${message.notification?.body}');
+    if (kDebugMode) { print('Foreground message received: ${message.messageId}');
+      if (kDebugMode) print('Title: ${message.notification?.title}');
+      if (kDebugMode) print('Body: ${message.notification?.body}');
     }
 
     // Show local notification

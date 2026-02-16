@@ -56,7 +56,6 @@ class McuBleService extends ChangeNotifier {
   final Uuid imuCharUuid = Uuid.parse('12345678-1234-1234-1234-1234567890ac');
 
   // Connection and subscription streams
-  StreamSubscription<ConnectionStateUpdate>? _connectionSubscription;
   StreamSubscription<List<int>>? _characteristicSubscription;
 
   String? _connectedDeviceId;
@@ -462,7 +461,7 @@ class McuBleService extends ChangeNotifier {
           '${packetTimestamp.toIso8601String()} - $sampleCount samples - ${data.map((e) => e.toRadixString(16).padLeft(2, '0')).join(' ')}');
 
       return samples;
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('❌ MCU BLE: Error parsing packet: $e');
       return [];
     }

@@ -67,10 +67,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Support nested objects in form data
 
 // Debug Request Logger
-app.use((req, res, next) => {
-  console.log(`[Request] ${req.method} ${req.originalUrl}`);
-  next();
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`[Request] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+}
 
 
 // Serve static uploads

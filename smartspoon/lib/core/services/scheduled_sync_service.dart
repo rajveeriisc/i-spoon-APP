@@ -12,8 +12,7 @@ void callbackDispatcher() {
       final syncService = SyncService();
       final synced = await syncService.syncIfNeeded();
       
-      if (kDebugMode) {
-        print(synced 
+      if (kDebugMode) { print(synced
           ? 'Background sync completed successfully' 
           : 'Background sync skipped (no data or no internet)');
       }
@@ -38,7 +37,6 @@ class ScheduledSyncService {
       // Initialize Workmanager
       await Workmanager().initialize(
         callbackDispatcher,
-        isInDebugMode: kDebugMode,
       );
 
       // Calculate delay until 11 PM today (or tomorrow if past 11 PM)

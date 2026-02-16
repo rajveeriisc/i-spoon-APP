@@ -220,8 +220,11 @@ class LiveInsightsRepository implements InsightsRepository {
           final h = m.startedAt.hour;
           if (h >= 5 && h < 11) {
             type = 'Breakfast';
-          } else if (h >= 11 && h < 16) type = 'Lunch';
-          else if (h >= 16 && h < 22) type = 'Dinner';
+          } else if (h >= 11 && h < 16) {
+            type = 'Lunch';
+          } else if (h >= 16 && h < 22) {
+            type = 'Dinner';
+          }
         }
         
         mealBites[type] = (mealBites[type] ?? 0) + m.totalBites;
