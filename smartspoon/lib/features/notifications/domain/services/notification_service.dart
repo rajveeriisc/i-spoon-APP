@@ -8,7 +8,7 @@ import '../../../auth/domain/services/auth_service.dart';
 
 /// Top-level function for handling background messages
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (kDebugMode) {
     print('Handling background message: ${message.messageId}');
     print('Title: ${message.notification?.title}');
@@ -36,7 +36,7 @@ class NotificationService {
 
     try {
       // Register background message handler
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
       // Request permissions
       final NotificationSettings settings = await _fcm.requestPermission(
@@ -114,6 +114,13 @@ class NotificationService {
 
     // Create Android notification channels
     await _createAndroidChannels();
+
+    // Explicitly request permission for Android 13+ via local notifications plugin
+    // This is more reliable than FCM's requestPermission on some devices
+    final androidImplementation = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImplementation != null) {
+      await androidImplementation.requestNotificationsPermission();
+    }
   }
 
   /// Create Android notification channels
@@ -172,8 +179,10 @@ class NotificationService {
 
       // Note: Assuming /api/notifications/fcm-token is the correct endpoint based on existing code.
       // If 404, check backend routes.
+      final url = Uri.parse('$_baseUrl/notifications/fcm-token');
+      if (kDebugMode) print('Registering FCM Token at: $url');
       final response = await http.post(
-        Uri.parse('$_baseUrl/api/notifications/fcm-token'),
+        url,
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
@@ -378,7 +387,7 @@ class NotificationService {
       if (authToken == null) return;
 
       await http.post(
-        Uri.parse('$_baseUrl/api/notifications/$notificationId/opened'),
+        Uri.parse('$_baseUrl/notifications/$notificationId/opened'),
         headers: {'Authorization': 'Bearer $authToken'},
       );
     } catch (e) {
@@ -393,7 +402,7 @@ class NotificationService {
       if (authToken == null) return;
 
       await http.post(
-        Uri.parse('$_baseUrl/api/notifications/$notificationId/action'),
+        Uri.parse('$_baseUrl/notifications/$notificationId/action'),
         headers: {'Authorization': 'Bearer $authToken'},
       );
     } catch (e) {

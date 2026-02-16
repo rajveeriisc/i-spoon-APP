@@ -160,7 +160,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _gender,
+                            initialValue: _gender,
                             decoration: _inputDecoration('Gender', Icons.wc),
                             items: ['Male', 'Female', 'Other']
                                 .map((g) => DropdownMenuItem(value: g, child: Text(g, style: GoogleFonts.outfit())))

@@ -534,8 +534,9 @@ class _EmailRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     String selectedLabel;
-    if (days <= 7) selectedLabel = 'this week';
-    else if (days <= 30) selectedLabel = 'this month';
+    if (days <= 7) {
+      selectedLabel = 'this week';
+    } else if (days <= 30) selectedLabel = 'this month';
     else if (days <= 90) selectedLabel = 'last 3 months';
     else selectedLabel = 'selected period';
         

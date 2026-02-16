@@ -343,6 +343,31 @@ class DatabaseService {
     ''', [start.toIso8601String(), end.toIso8601String()]);
   }
 
+  Future<List<Map<String, dynamic>>> getMealTypeTremorStats({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final db = await database;
+    
+    return await db.rawQuery('''
+      SELECT 
+        substr(m.started_at, 1, 10) as date,
+        m.meal_type as meal_type,
+        AVG(b.tremor_frequency) as avg_frequency,
+        AVG(b.tremor_magnitude) as avg_magnitude,
+        MAX(b.tremor_magnitude) as peak_magnitude,
+        COUNT(b.id) as sample_count,
+        SUM(CASE WHEN b.tremor_magnitude < 0.6 THEN 1 ELSE 0 END) as low_count,
+        SUM(CASE WHEN b.tremor_magnitude >= 0.6 AND b.tremor_magnitude < 1.4 THEN 1 ELSE 0 END) as moderate_count,
+        SUM(CASE WHEN b.tremor_magnitude >= 1.4 THEN 1 ELSE 0 END) as high_count
+      FROM meals m
+      JOIN bites b ON b.meal_uuid = m.uuid
+      WHERE m.started_at >= ? AND m.started_at <= ?
+        AND b.tremor_frequency > 0
+      GROUP BY substr(m.started_at, 1, 10), m.meal_type
+    ''', [start.toIso8601String(), end.toIso8601String()]);
+  }
+
   // ========================================================================
   // TEMPERATURE OPERATIONS - DEPRECATED (Avg stored in Meal)
   // ========================================================================

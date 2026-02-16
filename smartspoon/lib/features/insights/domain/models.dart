@@ -111,6 +111,7 @@ class DailyTremorSummary {
   final double avgFrequencyHz;
   final TremorLevel dominantLevel;
   final Map<String, int>? tremorLevelCounts; // {'low': 10, 'moderate': 5, 'high': 2}
+  final Map<String, DailyTremorSummary>? mealBreakdown;
 
   const DailyTremorSummary({
     required this.date,
@@ -119,6 +120,7 @@ class DailyTremorSummary {
     required this.avgFrequencyHz,
     required this.dominantLevel,
     this.tremorLevelCounts,
+    this.mealBreakdown,
   });
 }
 

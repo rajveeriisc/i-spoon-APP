@@ -48,23 +48,44 @@ export const updateUserPreferences = async (userId, preferences) => {
     } = preferences;
 
     const res = await pool.query(
-        `UPDATE user_notification_preferences 
-         SET enabled = COALESCE($2, enabled),
-             quiet_hours_start = COALESCE($3, quiet_hours_start),
-             quiet_hours_end = COALESCE($4, quiet_hours_end),
-             health_alerts_enabled = COALESCE($5, health_alerts_enabled),
-             achievement_enabled = COALESCE($6, achievement_enabled),
-             engagement_enabled = COALESCE($7, engagement_enabled),
-             system_alerts_enabled = COALESCE($8, system_alerts_enabled),
-             max_daily_notifications = COALESCE($9, max_daily_notifications),
-             weekly_digest_enabled = COALESCE($10, weekly_digest_enabled),
-             weekly_digest_day = COALESCE($11, weekly_digest_day),
-             weekly_digest_time = COALESCE($12, weekly_digest_time),
-             fcm_token = COALESCE($13, fcm_token),
-             fcm_token_updated_at = CASE WHEN $13 IS NOT NULL THEN NOW() ELSE fcm_token_updated_at END,
-             updated_at = NOW()
-         WHERE user_id = $1
-         RETURNING *`,
+        `INSERT INTO user_notification_preferences (
+            user_id, enabled, quiet_hours_start, quiet_hours_end,
+            health_alerts_enabled, achievement_enabled, engagement_enabled, system_alerts_enabled,
+            max_daily_notifications, weekly_digest_enabled, weekly_digest_day, weekly_digest_time,
+            fcm_token, fcm_token_updated_at, updated_at
+        ) VALUES (
+            $1, 
+            COALESCE($2, true), 
+            COALESCE($3, '22:00'::TIME), 
+            COALESCE($4, '07:00'::TIME),
+            COALESCE($5, true),
+            COALESCE($6, true),
+            COALESCE($7, true),
+            COALESCE($8, true),
+            COALESCE($9, 10),
+            COALESCE($10, true),
+            COALESCE($11, 0),
+            COALESCE($12, '09:00'::TIME),
+            $13::TEXT,
+            CASE WHEN $13 IS NOT NULL THEN NOW() ELSE NULL END,
+            NOW()
+        )
+        ON CONFLICT (user_id) DO UPDATE 
+        SET enabled = COALESCE($2, user_notification_preferences.enabled),
+            quiet_hours_start = COALESCE($3, user_notification_preferences.quiet_hours_start),
+            quiet_hours_end = COALESCE($4, user_notification_preferences.quiet_hours_end),
+            health_alerts_enabled = COALESCE($5, user_notification_preferences.health_alerts_enabled),
+            achievement_enabled = COALESCE($6, user_notification_preferences.achievement_enabled),
+            engagement_enabled = COALESCE($7, user_notification_preferences.engagement_enabled),
+            system_alerts_enabled = COALESCE($8, user_notification_preferences.system_alerts_enabled),
+            max_daily_notifications = COALESCE($9, user_notification_preferences.max_daily_notifications),
+            weekly_digest_enabled = COALESCE($10, user_notification_preferences.weekly_digest_enabled),
+            weekly_digest_day = COALESCE($11, user_notification_preferences.weekly_digest_day),
+            weekly_digest_time = COALESCE($12, user_notification_preferences.weekly_digest_time),
+            fcm_token = COALESCE($13, user_notification_preferences.fcm_token),
+            fcm_token_updated_at = CASE WHEN $13 IS NOT NULL THEN NOW() ELSE user_notification_preferences.fcm_token_updated_at END,
+            updated_at = NOW()
+        RETURNING *`,
         [
             userId, enabled, quiet_hours_start, quiet_hours_end,
             health_alerts_enabled, achievement_enabled, engagement_enabled, system_alerts_enabled,

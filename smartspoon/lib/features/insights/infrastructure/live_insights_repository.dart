@@ -27,19 +27,22 @@ class RealLiveTelemetrySource implements LiveTelemetrySource {
 
     // 2. Tremor
     final tremorIndex = _dataService.tremorIndex;
-    // Map 0-100 index to TremorLevel
+    final result = _dataService.lastTremorResult;
+
+    // Map 0-3 index to TremorLevel
+    // 0-1 = Low, 1-2 = Moderate, 2-3 = High
     TremorLevel level;
-    if (tremorIndex < 10) {
+    if (tremorIndex < 1.0) {
       level = TremorLevel.low;
-    } else if (tremorIndex < 45) {
+    } else if (tremorIndex < 2.0) {
       level = TremorLevel.moderate;
     } else {
       level = TremorLevel.high;
     }
     
     _tremorCtrl.add(TremorMetrics(
-      currentMagnitude: tremorIndex / 20.0, // Rough mapping for display
-      peakFrequencyHz: 0.0, // Not calculated yet
+      currentMagnitude: result.amplitude, // Use actual amplitude from analysis
+      peakFrequencyHz: result.frequency,  // Use actual frequency from analysis
       level: level,
     ));
 
@@ -190,7 +193,7 @@ class LiveInsightsRepository implements InsightsRepository {
     for (var m in meals) {
       if (m.startedAt.isBefore(start) || m.startedAt.isAfter(end.add(const Duration(days: 1)))) continue;
       
-      final key = "${m.startedAt.year}-${m.startedAt.month}-${m.startedAt.day}";
+      final key = '${m.startedAt.year}-${m.startedAt.month}-${m.startedAt.day}';
       if (!grouped.containsKey(key)) grouped[key] = [];
       grouped[key]!.add(m);
     }
@@ -215,8 +218,9 @@ class LiveInsightsRepository implements InsightsRepository {
         String type = m.mealType ?? 'Snacks';
         if (m.mealType == null) {
           final h = m.startedAt.hour;
-          if (h >= 5 && h < 11) type = 'Breakfast';
-          else if (h >= 11 && h < 16) type = 'Lunch';
+          if (h >= 5 && h < 11) {
+            type = 'Breakfast';
+          } else if (h >= 11 && h < 16) type = 'Lunch';
           else if (h >= 16 && h < 22) type = 'Dinner';
         }
         
@@ -243,16 +247,15 @@ class LiveInsightsRepository implements InsightsRepository {
   }) async {
     // Use the new SQL aggregation for accurate bite-level stats
     final stats = await _db.getDailyTremorStats(start: start, end: end);
+    final mealStats = await _db.getMealTypeTremorStats(start: start, end: end);
     
-    final summaries = <DailyTremorSummary>[];
-    
-    for (var row in stats) {
+    // Helper to convert DB row to Summary
+    DailyTremorSummary rowToSummary(Map<String, dynamic> row, {Map<String, DailyTremorSummary>? breakdown}) {
       final dateStr = row['date'] as String;
       final avgFreq = (row['avg_frequency'] as num?)?.toDouble() ?? 0.0;
       final avgMagQuery = (row['avg_magnitude'] as num?)?.toDouble() ?? 0.0;
       final peakMagQuery = (row['peak_magnitude'] as num?)?.toDouble() ?? 0.0;
       
-      // Extract tremor level counts
       final lowCount = (row['low_count'] as num?)?.toInt() ?? 0;
       final moderateCount = (row['moderate_count'] as num?)?.toInt() ?? 0;
       final highCount = (row['high_count'] as num?)?.toInt() ?? 0;
@@ -265,7 +268,7 @@ class LiveInsightsRepository implements InsightsRepository {
               ? TremorLevel.moderate
               : TremorLevel.high;
 
-      summaries.add(DailyTremorSummary(
+      return DailyTremorSummary(
         date: date,
         avgMagnitude: avgMagQuery,
         peakMagnitude: peakMagQuery,
@@ -276,7 +279,28 @@ class LiveInsightsRepository implements InsightsRepository {
           'moderate': moderateCount,
           'high': highCount,
         },
-      ));
+        mealBreakdown: breakdown,
+      );
+    }
+
+    // Process meal stats into a map of date -> breakdown
+    final Map<String, Map<String, DailyTremorSummary>> breakdowns = {};
+    
+    for (var row in mealStats) {
+      final dateStr = row['date'] as String;
+      final mealType = row['meal_type'] as String? ?? 'Snacks'; // Default if null
+      
+      if (!breakdowns.containsKey(dateStr)) {
+        breakdowns[dateStr] = {};
+      }
+      breakdowns[dateStr]![mealType] = rowToSummary(row);
+    }
+
+    final summaries = <DailyTremorSummary>[];
+    
+    for (var row in stats) {
+      final dateStr = row['date'] as String;
+      summaries.add(rowToSummary(row, breakdown: breakdowns[dateStr]));
     }
      
     return summaries;

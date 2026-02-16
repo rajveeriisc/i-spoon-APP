@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,34 +17,35 @@ class BleService extends ChangeNotifier {
   factory BleService() => _instance;
   BleService._internal();
 
+  final FlutterReactiveBle _ble = FlutterReactiveBle();
+
   // Bluetooth adapter state
-  BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
-  BluetoothAdapterState get adapterState => _adapterState;
-  bool get isBluetoothOn => _adapterState == BluetoothAdapterState.on;
+  BleStatus _adapterState = BleStatus.unknown;
+  BleStatus get adapterState => _adapterState;
+  bool get isBluetoothOn => _adapterState == BleStatus.ready;
 
   // Scanning state
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
   // Discovered devices during scan
-  final Map<String, BluetoothDevice> _discoveredDevices = {};
-  List<BluetoothDevice> get discoveredDevices =>
+  final Map<String, DiscoveredDevice> _discoveredDevices = {};
+  List<DiscoveredDevice> get discoveredDevices =>
       _discoveredDevices.values.toList();
 
   // Connected devices
-  final Map<String, BluetoothDevice> _connectedDevices = {};
-  List<BluetoothDevice> get connectedDevices =>
-      _connectedDevices.values.toList();
+  final Map<String, StreamSubscription<ConnectionStateUpdate>>
+  _connectionSubscriptions = {};
+  final Map<String, DiscoveredDevice> _connectedDevices = {};
+  List<String> get connectedDeviceIds => _connectedDevices.keys.toList();
 
   // Previously connected devices (from storage)
   final List<SavedBleDevice> _previousDevices = [];
   List<SavedBleDevice> get previousDevices => _previousDevices;
 
   // Subscriptions
-  StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
-  final Map<String, StreamSubscription<BluetoothConnectionState>>
-  _connectionSubscriptions = {};
+  StreamSubscription<BleStatus>? _adapterStateSubscription;
+  StreamSubscription<DiscoveredDevice>? _scanSubscription;
 
   // Storage key for previously connected devices
   static const String _storageKey = 'ble_saved_devices';
@@ -57,29 +58,20 @@ class BleService extends ChangeNotifier {
     await _loadSavedDevices();
 
     // Listen to adapter state changes
-    _adapterStateSubscription = FlutterBluePlus.adapterState.listen((state) {
-      debugPrint('🔵 BLE Adapter State: $state');
-      _adapterState = state;
+    _adapterStateSubscription = _ble.statusStream.listen((status) {
+      debugPrint('🔵 BLE Adapter State: $status');
+      _adapterState = status;
       notifyListeners();
     });
-
-    // Get initial adapter state
-    _adapterState = await FlutterBluePlus.adapterState.first;
-
-    // Load currently connected devices
-    await _updateConnectedDevices();
 
     debugPrint('🔵 BLE Service: Initialized. Adapter: $_adapterState');
   }
 
   /// Check and request Bluetooth permissions
-  /// For Android 12+ (API 31+): Only needs BLUETOOTH_SCAN and BLUETOOTH_CONNECT
-  /// For Android < 12: Also needs BLUETOOTH and LOCATION
   Future<bool> checkAndRequestPermissions() async {
     debugPrint('🔵 BLE Service: Checking permissions...');
 
     try {
-      // Android 12+ (API 31+) - Modern permissions
       // Check Bluetooth Scan permission (Android 12+)
       if (await Permission.bluetoothScan.isDenied) {
         final result = await Permission.bluetoothScan.request();
@@ -106,17 +98,6 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  /// Turn on Bluetooth (opens system settings)
-  Future<void> turnOnBluetooth() async {
-    try {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await FlutterBluePlus.turnOn();
-      }
-    } catch (e) {
-      debugPrint('❌ Error turning on Bluetooth: $e');
-    }
-  }
-
   /// Start scanning for BLE devices
   Future<void> startScan({
     Duration timeout = const Duration(seconds: 15),
@@ -128,13 +109,15 @@ class BleService extends ChangeNotifier {
 
     if (!isBluetoothOn) {
       debugPrint('❌ Bluetooth is off');
-      throw Exception('Bluetooth is turned off');
+      // On some platforms we might want to prompt user, but reactive_ble doesn't have a direct helper
+      // Just notify listeners/UI can handle
     }
 
     // Check permissions
     final hasPermissions = await checkAndRequestPermissions();
     if (!hasPermissions) {
-      throw Exception('Required permissions not granted');
+      debugPrint('❌ Required permissions not granted');
+      return;
     }
 
     try {
@@ -144,34 +127,23 @@ class BleService extends ChangeNotifier {
       notifyListeners();
 
       // Start scanning
-      // androidUsesFineLocation: false because we use neverForLocation flag
-      // This works for Android 12+ without location permissions
-      await FlutterBluePlus.startScan(
-        timeout: timeout,
-        androidUsesFineLocation: false,
-      );
-
-      // Listen to scan results
-      _scanSubscription = FlutterBluePlus.scanResults.listen(
-        (results) {
-          for (var result in results) {
-            final device = result.device;
-            final deviceId = device.remoteId.toString();
-
-            // Only add devices with a valid name (I-Spoon devices)
-            if (device.platformName.isNotEmpty) {
-              if (!_discoveredDevices.containsKey(deviceId)) {
-                debugPrint(
-                  '📱 Found device: ${device.platformName} ($deviceId)',
-                );
-                _discoveredDevices[deviceId] = device;
-                notifyListeners();
-              }
+      _scanSubscription = _ble.scanForDevices(
+        withServices: [],
+        scanMode: ScanMode.lowLatency,
+      ).listen(
+        (device) {
+          if (device.name.isNotEmpty) {
+            if (!_discoveredDevices.containsKey(device.id)) {
+              debugPrint('📱 Found device: ${device.name} (${device.id})');
+              _discoveredDevices[device.id] = device;
+              notifyListeners();
             }
           }
         },
         onError: (error) {
           debugPrint('❌ Scan error: $error');
+          _isScanning = false;
+          notifyListeners();
         },
       );
 
@@ -185,7 +157,6 @@ class BleService extends ChangeNotifier {
       debugPrint('❌ Error starting scan: $e');
       _isScanning = false;
       notifyListeners();
-      rethrow;
     }
   }
 
@@ -195,7 +166,7 @@ class BleService extends ChangeNotifier {
 
     try {
       debugPrint('🛑 Stopping BLE scan...');
-      await FlutterBluePlus.stopScan();
+      await _scanSubscription?.cancel();
       _isScanning = false;
       notifyListeners();
     } catch (e) {
@@ -204,113 +175,83 @@ class BleService extends ChangeNotifier {
   }
 
   /// Connect to a BLE device
-  Future<bool> connectToDevice(BluetoothDevice device) async {
+  Future<void> connectToDevice(DiscoveredDevice device) async {
+    final deviceId = device.id;
+    debugPrint('🔗 Connecting to ${device.name} ($deviceId)...');
+
+    // If already connecting/connected, we usually want to return.
+    // BUT if the user is explicitly retrying or the state is stale, we should clear it.
+    // For now, if called again, we will CANCEL the previous attempt and start over.
+    if (_connectionSubscriptions.containsKey(deviceId)) {
+      debugPrint('⚠️ Connection attempt in progress for $deviceId. Cancelling old subscription to retry.');
+      await _connectionSubscriptions[deviceId]?.cancel();
+      _connectionSubscriptions.remove(deviceId);
+    }
+
     try {
-      debugPrint('🔗 Connecting to ${device.platformName}...');
+      _connectionSubscriptions[deviceId] = _ble
+          .connectToDevice(
+        id: deviceId,
+        connectionTimeout: const Duration(seconds: 15),
+      )
+          .listen(
+        (connectionState) {
+          debugPrint(
+            '📡 Connection state for ${device.name}: ${connectionState.connectionState}',
+          );
 
-      // Check if already connected
-      final isConnected =
-          await device.connectionState.first ==
-          BluetoothConnectionState.connected;
-      if (isConnected) {
-        debugPrint('✅ Device already connected');
-        return true;
-      }
-
-      // Connect with timeout
-      await device.connect(
-        timeout: const Duration(seconds: 15),
-        autoConnect: false,
+          if (connectionState.connectionState ==
+              DeviceConnectionState.connected) {
+            _onDeviceConnected(device);
+          } else if (connectionState.connectionState ==
+              DeviceConnectionState.disconnected) {
+            _onDeviceDisconnected(deviceId);
+          }
+        },
+        onError: (Object error) {
+          debugPrint('❌ Connection error for $deviceId: $error');
+          _onDeviceDisconnected(deviceId);
+        },
       );
-
-      // Wait for connection to be established
-      await device.connectionState
-          .where((state) => state == BluetoothConnectionState.connected)
-          .first
-          .timeout(const Duration(seconds: 15));
-
-      debugPrint('✅ Connected to ${device.platformName}');
-
-      // Save device to previously connected list
-      await _saveDevice(device);
-
-      // Add to connected devices and monitor connection
-      _connectedDevices[device.remoteId.toString()] = device;
-      _monitorDeviceConnection(device);
-
-      notifyListeners();
-      return true;
     } catch (e) {
-      debugPrint('❌ Error connecting to device: $e');
-      return false;
+      debugPrint('❌ Error initiating connection: $e');
+      _onDeviceDisconnected(deviceId); // Ensure cleanup
+    }
+  }
+
+  void _onDeviceConnected(DiscoveredDevice device) {
+    if (!_connectedDevices.containsKey(device.id)) {
+      debugPrint('✅ Connected to ${device.name}');
+      _connectedDevices[device.id] = device;
+      _saveDevice(device);
+      notifyListeners();
+    }
+  }
+
+  void _onDeviceDisconnected(String deviceId) {
+    if (_connectedDevices.containsKey(deviceId)) {
+      debugPrint('🔌 Disconnected from $deviceId');
+      _connectedDevices.remove(deviceId);
+      // Clean up subscription if we consider it fully disconnected
+      // Depending on requirement, we might want to keep retrying or just clean up
+      _connectionSubscriptions[deviceId]?.cancel();
+      _connectionSubscriptions.remove(deviceId);
+      notifyListeners();
     }
   }
 
   /// Disconnect from a BLE device
-  Future<void> disconnectDevice(BluetoothDevice device) async {
+  Future<void> disconnectDevice(String deviceId) async {
     try {
-      debugPrint('🔌 Disconnecting from ${device.platformName}...');
-      await device.disconnect();
-
-      // Remove from connected devices
-      _connectedDevices.remove(device.remoteId.toString());
-
-      // Cancel connection monitoring
-      _connectionSubscriptions[device.remoteId.toString()]?.cancel();
-      _connectionSubscriptions.remove(device.remoteId.toString());
-
+      debugPrint('🔌 Disconnecting from $deviceId...');
+      // Cancelling the subscription disconnects the device in reactive_ble
+      await _connectionSubscriptions[deviceId]?.cancel();
+      _connectionSubscriptions.remove(deviceId);
+      _connectedDevices.remove(deviceId);
       notifyListeners();
-      debugPrint('✅ Disconnected from ${device.platformName}');
+      debugPrint('✅ Disconnected from $deviceId');
     } catch (e) {
       debugPrint('❌ Error disconnecting device: $e');
-    }
-  }
-
-  /// Monitor device connection state
-  void _monitorDeviceConnection(BluetoothDevice device) {
-    final deviceId = device.remoteId.toString();
-
-    // Cancel existing subscription if any
-    _connectionSubscriptions[deviceId]?.cancel();
-
-    // Listen to connection state changes
-    _connectionSubscriptions[deviceId] = device.connectionState.listen(
-      (state) {
-        debugPrint('📡 Device ${device.platformName} state: $state');
-
-        if (state == BluetoothConnectionState.disconnected) {
-          _connectedDevices.remove(deviceId);
-          _connectionSubscriptions[deviceId]?.cancel();
-          _connectionSubscriptions.remove(deviceId);
-          notifyListeners();
-        } else if (state == BluetoothConnectionState.connected) {
-          if (!_connectedDevices.containsKey(deviceId)) {
-            _connectedDevices[deviceId] = device;
-            notifyListeners();
-          }
-        }
-      },
-      onError: (error) {
-        debugPrint('❌ Connection monitoring error: $error');
-      },
-    );
-  }
-
-  /// Update list of connected devices
-  Future<void> _updateConnectedDevices() async {
-    try {
-      final connected = FlutterBluePlus.connectedDevices;
-      _connectedDevices.clear();
-
-      for (var device in connected) {
-        _connectedDevices[device.remoteId.toString()] = device;
-        _monitorDeviceConnection(device);
-      }
-
-      notifyListeners();
-      debugPrint('🔄 Updated connected devices: ${_connectedDevices.length}');
-    } catch (e) {
-      debugPrint('❌ Error updating connected devices: $e');
     }
   }
 
@@ -320,26 +261,23 @@ class BleService extends ChangeNotifier {
   }
 
   /// Get device by ID
-  BluetoothDevice? getDeviceById(String deviceId) {
+  DiscoveredDevice? getDeviceById(String deviceId) {
     return _connectedDevices[deviceId] ?? _discoveredDevices[deviceId];
   }
 
   /// Save a device to previously connected list
-  Future<void> _saveDevice(BluetoothDevice device) async {
+  Future<void> _saveDevice(DiscoveredDevice device) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedDevice = SavedBleDevice(
-        id: device.remoteId.toString(),
-        name: device.platformName.isNotEmpty
-            ? device.platformName
-            : 'Unknown Device',
+        id: device.id,
+        name: device.name.isNotEmpty ? device.name : 'Unknown Device',
         lastConnected: DateTime.now(),
       );
 
       // Load existing devices
-      final existing = _previousDevices
-          .where((d) => d.id != savedDevice.id)
-          .toList();
+      final existing =
+          _previousDevices.where((d) => d.id != savedDevice.id).toList();
 
       // Add new device at the beginning
       existing.insert(0, savedDevice);
@@ -356,7 +294,7 @@ class BleService extends ChangeNotifier {
       _previousDevices.addAll(toSave);
 
       notifyListeners();
-      debugPrint('💾 Saved device: ${device.platformName}');
+      debugPrint('💾 Saved device: ${device.name}');
     } catch (e) {
       debugPrint('❌ Error saving device: $e');
     }
@@ -402,30 +340,48 @@ class BleService extends ChangeNotifier {
     }
   }
 
-  /// Refresh device lists
+  /// Refresh device lists - mostly for UI update
   Future<void> refresh() async {
-    await _updateConnectedDevices();
+    // reactive_ble handles state via streams, so we just reload saved devices
     await _loadSavedDevices();
+    notifyListeners();
   }
 
-  /// Dispose service and clean up resources
   /// Auto-connect to the last connected device
   Future<void> autoConnectToLastDevice() async {
     if (_previousDevices.isEmpty) return;
-    
+
     // Try to connect to the most recent device
     final lastDevice = _previousDevices.first;
-    debugPrint('🔄 Auto-connecting to last device: ${lastDevice.name} (${lastDevice.id})');
-    
-    // We need to scan to find the device instance first if it's not known
-    // But for now, let's just try to find it in known devices
-    // This is a simplified implementation
-    // In a real app, you might need to scan specifically for this ID
+    debugPrint(
+      '🔄 Auto-connecting to last device: ${lastDevice.name} (${lastDevice.id})',
+    );
+
+    // To connect, we need to know it's advertising or just try connecting by ID.
+    // reactive_ble allows connecting by ID without scanning if the OS knows it or it's advertising.
+    // However, for robust auto-reconnect, scanning is often preferred to ensure it's in range.
+    // Here we will try to connect directly.
+
+    // We fabricate a DiscoveredDevice to pass to connectToDevice
+    // This is a bit of a hack since we don't have the full DiscoveredDevice object,
+    // but connectToDevice really only needs the ID.
+    // Note: serviceData, manufacturerData etc will be empty.
+    final device = DiscoveredDevice(
+      id: lastDevice.id,
+      name: lastDevice.name,
+      serviceData: {},
+      manufacturerData: Uint8List(0),
+      rssi: 0,
+      serviceUuids: [],
+    );
+
+    connectToDevice(device);
   }
 
   /// Forget a device (remove from saved list)
   Future<void> forgetDevice(String deviceId) async {
     await removeSavedDevice(deviceId);
+    await disconnectDevice(deviceId);
   }
 
   @override

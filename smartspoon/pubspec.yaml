@@ -51,7 +51,7 @@ dependencies:
   google_fonts: ^6.3.2
   
   # Bluetooth
-  flutter_blue_plus: ^1.36.8
+  flutter_reactive_ble: ^5.3.1
   permission_handler: ^11.4.0
   
   # Media & Files
@@ -61,6 +61,8 @@ dependencies:
   
   # Charts & Visualization
   fl_chart: ^0.66.2
+  fftea: ^1.2.0
+  vector_math: ^2.1.4
   
   # Utilities
   intl: ^0.20.2

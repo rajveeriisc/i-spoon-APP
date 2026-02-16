@@ -9,6 +9,7 @@ class AppTheme {
   static const Color light = Color(0xFFF0F2F2);
   static const Color navy = Color(0xFF2E4A70);
   static const Color gold = Color(0xFFCF8A40);
+  static const Color coral = Color(0xFFFF7F50);
 
   static ThemeData lightTheme() {
     final base = ThemeData.light(useMaterial3: true);

@@ -8,6 +8,8 @@ import 'package:smartspoon/features/profile/presentation/screens/faq_page.dart';
 import 'package:smartspoon/features/profile/presentation/screens/help_center_page.dart';
 import 'package:smartspoon/features/profile/presentation/widgets/feedback_modals.dart';
 import 'package:smartspoon/features/profile/presentation/screens/daily_bites_screen.dart';
+import 'package:smartspoon/features/profile/presentation/screens/privacy_policy_page.dart';
+import 'package:smartspoon/features/profile/presentation/screens/terms_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -187,6 +189,30 @@ class ProfilePage extends StatelessWidget {
                               title: 'Rate App',
                               onTap: () => FeedbackModals.showRateAppModal(context),
                               showBorder: false, // Last item
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 24),
+
+                      // 6. Legal
+                      Text('Legal', style: kTitleStyle),
+                      const SizedBox(height: 12),
+                      ProfileCard(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                        child: Column(
+                          children: [
+                            SettingsRow(
+                              icon: Icons.privacy_tip_outlined,
+                              title: 'Privacy Policy',
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyPage())),
+                            ),
+                            SettingsRow(
+                              icon: Icons.description_outlined,
+                              title: 'Terms of Service',
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsPage())),
+                              showBorder: false,
                             ),
                           ],
                         ),

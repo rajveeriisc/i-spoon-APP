@@ -25,10 +25,13 @@ class _DailyBitesScreenState extends State<DailyBitesScreen> {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     
     // Initialize from provider values
-    _breakfastBites = userProvider.breakfastGoal.toDouble();
-    _lunchBites = userProvider.lunchGoal.toDouble();
-    _dinnerBites = userProvider.dinnerGoal.toDouble();
-    _snackBites = userProvider.snackGoal.toDouble();
+    final daily = userProvider.dailyGoal?.toDouble() ?? 50.0;
+    // Split equally for now as detailed goals aren't supported in backend yet
+    final split = daily / 4;
+    _breakfastBites = split;
+    _lunchBites = split;
+    _dinnerBites = split;
+    _snackBites = split;
   }
 
   bool _isSaving = false;
@@ -43,17 +46,14 @@ class _DailyBitesScreenState extends State<DailyBitesScreen> {
       
       final updates = {
         'daily_goal': total.toInt(),
-        'breakfast_goal': _breakfastBites.toInt(),
-        'lunch_goal': _lunchBites.toInt(),
-        'dinner_goal': _dinnerBites.toInt(),
-        'snack_goal': _snackBites.toInt(),
+        // Detailed goals not yet supported in UserProvider/Backend
       };
 
       // Call API
       final res = await AuthService.updateProfile(data: updates);
       
       if (mounted) {
-        // Update UserProvider with response (which now includes bite_goals)
+        // Update UserProvider with response
         final userProvider = Provider.of<UserProvider>(context, listen: false);
         final userData = res['user'];
         if (userData != null) {

@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/devices/index.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 /// Debug screen to view and test MCU BLE communication
 class McuDebugScreen extends StatefulWidget {
-  final BluetoothDevice device;
+  final String deviceId;
+  final String deviceName;
 
-  const McuDebugScreen({super.key, required this.device});
+  const McuDebugScreen({
+    super.key,
+    required this.deviceId,
+    required this.deviceName,
+  });
 
   @override
   State<McuDebugScreen> createState() => _McuDebugScreenState();
@@ -23,36 +27,45 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
   @override
   void initState() {
     super.initState();
-    _mcuService = McuBleService();
+    // Use the shared McuBleService from Provider
+    _mcuService = Provider.of<McuBleService>(context, listen: false);
     _connectToMcu();
   }
 
   Future<void> _connectToMcu() async {
     setState(() {
       _isConnecting = true;
-      _statusMessage = 'Connecting to MCU...';
+      _statusMessage = 'Checking device connection...';
     });
 
     try {
-      // Connect and discover services
-      bool connected = await _mcuService.connect(widget.device);
-      
-      if (!connected) {
+      debugPrint('Checking connection for device ID: ${widget.deviceId}');
+
+      // Get BleService to check if device is connected
+      final bleService = Provider.of<BleService>(context, listen: false);
+
+      // Check if device is connected via BleService
+      if (!bleService.isDeviceConnected(widget.deviceId)) {
         setState(() {
           _isConnecting = false;
-          _statusMessage = 'Failed to connect to MCU service';
+          _statusMessage =
+              'Device not connected. Please connect from home screen first.';
         });
         return;
       }
 
-      // Subscribe to notifications
-      bool subscribed = await _mcuService.subscribeToData();
-      
+      setState(() {
+        _statusMessage = 'Subscribing to MCU data stream...';
+      });
+
+      // Subscribe to data stream from already-connected device
+      bool subscribed = await _mcuService.subscribeToDevice(widget.deviceId);
+
       setState(() {
         _isConnecting = false;
-        _statusMessage = subscribed 
-            ? 'Connected and receiving data' 
-            : 'Connected but subscription failed';
+        _statusMessage = subscribed
+            ? 'Connected and receiving data'
+            : 'Failed to subscribe to data stream';
       });
     } catch (e) {
       setState(() {
@@ -62,34 +75,10 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
     }
   }
 
-  Future<void> _sendTemperature() async {
-    final temp = double.tryParse(_tempController.text);
-    if (temp == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid temperature value')),
-      );
-      return;
-    }
-
-    bool success = await _mcuService.setTemperature(temp);
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success 
-              ? 'Temperature set to ${temp.toStringAsFixed(1)}°C' 
-              : 'Failed to send temperature'),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
-    }
-  }
-
   @override
   void dispose() {
-    // Don't dispose the singleton service!
-    // _mcuService.dispose(); 
     _tempController.dispose();
+    // Don't disconnect - keep connection alive for other screens
     super.dispose();
   }
 
@@ -100,27 +89,10 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-            'MCU Debug',
+            'MCU Debug - Real-time Data',
             style: GoogleFonts.lato(fontWeight: FontWeight.bold),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Manual Read',
-              onPressed: () async {
-                final value = await _mcuService.readCurrentValue();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(value != null 
-                          ? 'Read: $value' 
-                          : 'Failed to read value'),
-                      backgroundColor: value != null ? Colors.green : Colors.orange,
-                    ),
-                  );
-                }
-              },
-            ),
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Clear Log',
@@ -148,15 +120,42 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Status Card
+                        // Real-time Sensor Data Cards
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildInfoCard(
+                                icon: Icons.battery_charging_full,
+                                iconColor: _getBatteryColor(
+                                  service.batteryLevel,
+                                ),
+                                label: 'Battery',
+                                value: '${service.batteryLevel}%',
+                                subtitle: service.batteryLevel < 20
+                                    ? 'Low'
+                                    : 'Good',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildInfoCard(
+                                icon: Icons.thermostat,
+                                iconColor: _getTempColor(service.temperature),
+                                label: 'Food Temp',
+                                value:
+                                    '${service.temperature.toStringAsFixed(1)}°C',
+                                subtitle: _getTempLabel(service.temperature),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Connection Status
                         _buildStatusCard(service),
                         const SizedBox(height: 16),
 
-                        // Heater Control (Replaces Temp Control)
-                        _buildHeaterControl(service),
-                        const SizedBox(height: 16),
-
-                        // Current Sensor Data
+                        // Current IMU Data
                         _buildSensorDataCard(service),
                         const SizedBox(height: 16),
 
@@ -171,6 +170,62 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
     );
   }
 
+  Widget _buildInfoCard({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required String subtitle,
+  }) {
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(icon, color: iconColor, size: 40),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: GoogleFonts.lato(fontSize: 12, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: GoogleFonts.lato(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              subtitle,
+              style: GoogleFonts.lato(fontSize: 11, color: Colors.grey[500]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getBatteryColor(int level) {
+    if (level >= 60) return Colors.green;
+    if (level >= 30) return Colors.orange;
+    return Colors.red;
+  }
+
+  Color _getTempColor(double temp) {
+    if (temp >= 60) return Colors.red;
+    if (temp >= 35) return Colors.orange;
+    return Colors.blue;
+  }
+
+  String _getTempLabel(double temp) {
+    if (temp >= 60) return 'Hot';
+    if (temp >= 35) return 'Warm';
+    if (temp >= 20) return 'Room Temp';
+    return 'Cold';
+  }
+
   Widget _buildStatusCard(McuBleService service) {
     return Card(
       child: Padding(
@@ -179,88 +234,9 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Connection Status',
+              'Status',
               style: GoogleFonts.lato(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildStatusRow('Device', widget.device.platformName),
-            _buildStatusRow(
-              'Connected',
-              service.isConnected ? 'Yes' : 'No',
-              service.isConnected ? Colors.green : Colors.red,
-            ),
-            _buildStatusRow(
-              'Subscribed',
-              service.isSubscribed ? 'Yes' : 'No',
-              service.isSubscribed ? Colors.green : Colors.red,
-            ),
-            _buildStatusRow(
-              'Data Received',
-              service.rawDataLog.isNotEmpty ? 'Yes (${service.rawDataLog.length})' : 'None yet',
-              service.rawDataLog.isNotEmpty ? Colors.green : Colors.orange,
-            ),
-            const Divider(),
-            _buildStatusRow('Service UUID', '${McuBleService.serviceUuid.toString().substring(0, 8)}...'),
-            const SizedBox(height: 8),
-            if (!service.isSubscribed && service.isConnected)
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.warning, color: Colors.orange, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Notifications not subscribed. Try reconnecting.',
-                        style: GoogleFonts.lato(fontSize: 12, color: Colors.orange.shade900),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusRow(String label, String value, [Color? valueColor]) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: GoogleFonts.lato(color: Colors.grey)),
-          Text(
-            value,
-            style: GoogleFonts.lato(
-              fontWeight: FontWeight.w600,
-              color: valueColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaterControl(McuBleService service) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Heater Control',
-              style: GoogleFonts.lato(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -268,22 +244,25 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Text('Connected:', style: GoogleFonts.lato()),
                 Text(
-                  'Heater State',
-                  style: GoogleFonts.lato(fontSize: 16),
-                ),
-                Switch(
-                  value: service.isHeaterOn,
-                  onChanged: (value) {
-                    service.setHeaterState(value);
-                  },
-                  activeThumbColor: Colors.red,
+                  service.isConnected ? 'YES' : 'NO',
+                  style: GoogleFonts.lato(
+                    color: service.isConnected ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
-            Text(
-              service.isHeaterOn ? 'Sending "ON" command' : 'Sending "OFF" command',
-              style: GoogleFonts.lato(fontSize: 12, color: Colors.grey),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Packets:', style: GoogleFonts.lato()),
+                Text(
+                  '${service.rawDataLog.length}',
+                  style: GoogleFonts.lato(fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
           ],
         ),
@@ -293,6 +272,17 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
 
   Widget _buildSensorDataCard(McuBleService service) {
     final data = service.currentData;
+    if (data == null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Waiting for sensor data...',
+            style: GoogleFonts.lato(color: Colors.grey),
+          ),
+        ),
+      );
+    }
 
     return Card(
       child: Padding(
@@ -301,112 +291,46 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Current Sensor Data',
+              'Current IMU Data',
               style: GoogleFonts.lato(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 12),
-            if (data == null)
-              Text(
-                'Waiting for data...',
-                style: GoogleFonts.lato(color: Colors.grey),
-              )
-            else ...[
-              _buildSensorRow('🌡️ Temperature', '${data.temperature.toStringAsFixed(2)}°C'),
-              _buildSensorRow('🔥 Heater Status', service.isHeaterOn ? 'ON' : 'OFF'),
-              _buildSensorRow('🔋 Battery', '${service.batteryLevel}%'),
-              const Divider(),
-              Text(
-                'Accelerometer (mg)',
-                style: GoogleFonts.lato(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blue,
-                ),
-              ),
-              _buildSensorRow('  X', '${data.accelX}'),
-              _buildSensorRow('  Y', '${data.accelY}'),
-              _buildSensorRow('  Z', '${data.accelZ}'),
-              const Divider(),
-              Text(
-                'Gyroscope (dps)',
-                style: GoogleFonts.lato(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.purple,
-                ),
-              ),
-              _buildSensorRow('  X', '${data.gyroX}'),
-              _buildSensorRow('  Y', '${data.gyroY}'),
-              _buildSensorRow('  Z', '${data.gyroZ}'),
-              const Divider(),
-              Text(
-                'Last Update: ${_formatTime(data.timestamp)}',
-                style: GoogleFonts.lato(fontSize: 12, color: Colors.grey),
-              ),
-            ],
+            Text(
+              'Accel: (${data.accelX.toStringAsFixed(3)}, ${data.accelY.toStringAsFixed(3)}, ${data.accelZ.toStringAsFixed(3)}) g',
+            ),
+            Text(
+              'Gyro: (${data.gyroX.toStringAsFixed(2)}, ${data.gyroY.toStringAsFixed(2)}, ${data.gyroZ.toStringAsFixed(2)}) deg/s',
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSensorRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: GoogleFonts.lato()),
-          Text(
-            value,
-            style: GoogleFonts.lato(
-              fontWeight: FontWeight.w600,
-              fontFeatures: [const FontFeature.tabularFigures()],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildRawDataLog(McuBleService service) {
     final log = service.rawDataLog;
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Raw Data Log (${log.length}/50)',
-                  style: GoogleFonts.lato(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (log.isNotEmpty)
-                  TextButton(
-                    onPressed: () => _mcuService.clearLog(),
-                    child: const Text('Clear'),
-                  ),
-              ],
+            Text(
+              'Raw Data Log (Last 20)',
+              style: GoogleFonts.lato(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 12),
             if (log.isEmpty)
-              Text(
-                'No data received yet',
-                style: GoogleFonts.lato(color: Colors.grey),
-              )
+              Text('No data yet', style: GoogleFonts.lato(color: Colors.grey))
             else
               Container(
-                height: 300,
+                height: 200,
                 decoration: BoxDecoration(
                   color: Colors.grey[900],
                   borderRadius: BorderRadius.circular(8),
@@ -419,10 +343,10 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
                     final reversedIndex = log.length - 1 - index;
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: SelectableText(
+                      child: Text(
                         log[reversedIndex],
                         style: GoogleFonts.jetBrainsMono(
-                          fontSize: 11,
+                          fontSize: 10,
                           color: Colors.greenAccent,
                         ),
                       ),
@@ -435,12 +359,4 @@ class _McuDebugScreenState extends State<McuDebugScreen> {
       ),
     );
   }
-
-  String _formatTime(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:'
-        '${time.minute.toString().padLeft(2, '0')}:'
-        '${time.second.toString().padLeft(2, '0')}';
-  }
 }
-
-

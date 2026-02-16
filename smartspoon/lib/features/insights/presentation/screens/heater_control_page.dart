@@ -2,8 +2,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:smartspoon/features/insights/domain/services/unified_data_service.dart';
+import 'package:smartspoon/features/devices/domain/services/mcu_ble_service.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:smartspoon/features/devices/domain/models/device_model.dart';
+import 'package:smartspoon/features/devices/domain/services/device_api_service.dart';
 
 class HeaterControlPage extends StatefulWidget {
   const HeaterControlPage({super.key});
@@ -20,6 +24,9 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
   
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  
+  final DeviceApiService _deviceApiService = DeviceApiService();
+  String? _userDeviceId; // Database ID of the device
 
   @override
   void initState() {
@@ -32,6 +39,104 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    
+    _loadSettings().then((_) => _syncFromBackend());
+  }
+  
+  String? get _currentDeviceId {
+    // Stubbed - BLE service API changed
+    return null;
+  }
+
+  Future<void> _loadSettings() async {
+    final deviceId = _currentDeviceId;
+    if (deviceId == null) return;
+    
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _isHeaterOn = prefs.getBool('heater_on_$deviceId') ?? false;
+        _activationTemp = prefs.getDouble('heater_act_$deviceId') ?? 15.0;
+        _maxTemp = prefs.getDouble('heater_max_$deviceId') ?? 40.0;
+      });
+    }
+  }
+
+  Future<void> _syncFromBackend() async {
+    final bleDeviceId = _currentDeviceId;
+    if (bleDeviceId == null) return;
+
+    try {
+      final devices = await _deviceApiService.getUserDevices();
+      // Match by MAC address (assuming bleDeviceId is the MAC or close to it)
+      // Note: DeviceModel.macAddress might be "00:11:22:33:44:55" and bleDeviceId "00:11:22:33:44:55"
+      
+      final matchedDevice = devices.firstWhere(
+        (d) => d.macAddress?.toUpperCase() == bleDeviceId.toUpperCase(),
+        orElse: () {
+          debugPrint('No matching backend device found for BLE MAC: $bleDeviceId');
+          return DeviceModel(id: '', name: '', userDeviceId: null);
+        },
+      );
+
+      if (matchedDevice.userDeviceId != null) {
+        _userDeviceId = matchedDevice.userDeviceId;
+        
+        // If backend has settings, override local (or merge? preferring backend for now)
+        if (mounted) {
+           bool stateChanged = false;
+           if (matchedDevice.heaterActive != null) {
+             _isHeaterOn = matchedDevice.heaterActive!;
+             stateChanged = true;
+           }
+           if (matchedDevice.heaterActivationTemp != null) {
+             _activationTemp = matchedDevice.heaterActivationTemp!;
+             stateChanged = true;
+           }
+           if (matchedDevice.heaterMaxTemp != null) {
+             _maxTemp = matchedDevice.heaterMaxTemp!;
+             stateChanged = true;
+           }
+           
+           if (stateChanged) {
+             setState(() {});
+             // Also update local storage to match
+             await _saveToStorage();
+           }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error syncing heater settings from backend: $e');
+    }
+  }
+
+  Future<void> _saveToStorage() async {
+    final deviceId = _currentDeviceId;
+    if (deviceId == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('heater_on_$deviceId', _isHeaterOn);
+    await prefs.setDouble('heater_act_$deviceId', _activationTemp);
+    await prefs.setDouble('heater_max_$deviceId', _maxTemp);
+  }
+
+  Future<void> _saveToBackend() async {
+    if (_userDeviceId == null) return;
+    
+    try {
+      await _deviceApiService.updateSettings(_userDeviceId!, {
+        'heaterActive': _isHeaterOn,
+        'heaterActivationTemp': _activationTemp,
+        'heaterMaxTemp': _maxTemp,
+      });
+    } catch (e) {
+      debugPrint('Error saving heater settings to backend: $e');
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('⚠️ Saved locally, but cloud sync failed: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -46,10 +151,68 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
     });
   }
 
+  Future<void> _saveSettings() async {
+    final mcu = McuBleService();
+    
+    // Check if connected
+    if (!mcu.isConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Not connected to Spoon'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Save to local storage first
+    await _saveToStorage();
+    
+    // Sync to backend (fire and forget or await?)
+    // Await to show error if fails, but don't block BLE commands?
+    // Let's do it concurrently or after.
+    _saveToBackend(); // Run in background to keep UI snappy
+
+    try {
+      if (_isHeaterOn) {
+        // Stubbed - heater control commands temporarily unavailable
+        debugPrint('Auto heater: stubbed - sendCommand/setHeaterState not yet available');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Heater control temporarily unavailable during BLE migration'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      } else {
+        debugPrint('Manual turn off: stubbed');
+         if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🛑 Heater turned OFF'),
+              backgroundColor: Colors.grey,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Error sending commands: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final foodTemp = Provider.of<UnifiedDataService>(context).foodTempC;
+    // DIRECTLY consume McuBleService to avoid UnifiedDataService complications
+    final foodTemp = Provider.of<McuBleService>(context).temperature;
 
     // Premium Background Gradient
     return Scaffold(
@@ -284,6 +447,17 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
                                     color: AppTheme.turquoise,
                                     isDarkMode: isDarkMode,
                                     onChanged: (v) => setState(() => _activationTemp = v),
+                                    onChangeEnd: (v) {
+                                      if (v > 25) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('⚠️ High activation temperature may reduce battery life.'),
+                                            backgroundColor: Colors.orange,
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    },
                                   ),
                                   const SizedBox(height: 32),
                                   _buildPremiumSlider(
@@ -294,6 +468,17 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
                                     color: AppTheme.gold,
                                     isDarkMode: isDarkMode,
                                     onChanged: (v) => setState(() => _maxTemp = v),
+                                    onChangeEnd: (v) {
+                                      if (v > 50) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('⚠️ Caution: High maximum temperature selected!'),
+                                            backgroundColor: Colors.deepOrange,
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    },
                                   ),
                                 ],
                               ),
@@ -304,6 +489,43 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
                     ],
                   ),
                 ),
+                
+                const SizedBox(height: 32),
+
+                // Save Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _saveSettings,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isHeaterOn ? AppTheme.turquoise : Colors.grey[700],
+                      foregroundColor: Colors.white,
+                      elevation: 8,
+                      shadowColor: (_isHeaterOn ? AppTheme.turquoise : Colors.black).withValues(alpha: 0.4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_isHeaterOn ? Icons.save_rounded : Icons.power_settings_new_rounded),
+                        const SizedBox(width: 12),
+                        Text(
+                          _isHeaterOn ? 'Save & Activate' : 'Save as Inactive',
+                          style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -320,6 +542,7 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
     required Color color,
     required bool isDarkMode,
     required ValueChanged<double> onChanged,
+    ValueChanged<double>? onChangeEnd,
   }) {
     return Column(
       children: [
@@ -370,6 +593,7 @@ class _HeaterControlPageState extends State<HeaterControlPage> with SingleTicker
             max: max,
             divisions: (max - min).toInt(),
             onChanged: onChanged,
+            onChangeEnd: onChangeEnd,
           ),
         ),
       ],

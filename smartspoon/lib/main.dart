@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-
 import 'package:smartspoon/core/core.dart';
 import 'package:smartspoon/core/providers/theme_provider.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
@@ -14,14 +14,21 @@ import 'package:smartspoon/features/onboarding/index.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/features/notifications/domain/services/notification_service.dart';
 import 'package:smartspoon/features/notifications/providers/notification_provider.dart';
+import 'package:smartspoon/firebase_options.dart';
 import 'package:smartspoon/core/services/scheduled_sync_service.dart';
+import 'package:smartspoon/features/devices/domain/services/mcu_ble_service.dart';
+import 'package:smartspoon/features/devices/domain/services/ble_service.dart';
+import 'package:smartspoon/features/devices/domain/services/tremor_detection_service.dart';
 
 Future<void> main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Firebase (required before runApp)
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Register background handler immediately after initialization for terminated state handling
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Configure system UI overlay style for better appearance
   SystemChrome.setSystemUIOverlayStyle(
@@ -66,39 +73,58 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()..loadTheme()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
+
+        // 1. Create BLE Services first (Singleton instances)
+        ChangeNotifierProvider(create: (_) => BleService()..initialize()),
+        ChangeNotifierProvider(create: (_) => McuBleService()),
         
-        // 1. Create UnifiedDataService first
-        ChangeNotifierProvider(create: (_) => UnifiedDataService()),
-        
-        // 2. Create Repository using UnifiedDataService (Create ONCE, don't listen to updates)
+        // Tremor Detection Service (Depends on McuBleService)
+        ChangeNotifierProvider(
+          create: (context) => 
+              TremorDetectionService(context.read<McuBleService>()),
+        ),
+
+        // 2. Create UnifiedDataService with McuBleService dependency
+        ChangeNotifierProvider(
+          create: (context) => UnifiedDataService(
+            mcuService: context.read<McuBleService>(),
+            tremorService: context.read<TremorDetectionService>(),
+          ),
+        ),
+
+        // 3. Create Repository using UnifiedDataService (Create ONCE, don't listen to updates)
         Provider<LiveInsightsRepository>(
-          create: (context) => LiveInsightsRepository(context.read<UnifiedDataService>()),
+          create: (context) =>
+              LiveInsightsRepository(context.read<UnifiedDataService>()),
           dispose: (_, repo) => repo.dispose(),
         ),
-        
-        // 3. Create InsightsController using Repository (Create ONCE)
+
+        // 4. Create InsightsController using Repository (Create ONCE)
         ChangeNotifierProvider<InsightsController>(
-          create: (context) => InsightsController(
-            context.read<LiveInsightsRepository>(),
-          )..init(),
+          create: (context) =>
+              InsightsController(context.read<LiveInsightsRepository>())
+                ..init(),
         ),
-        
-        // 4. Notification Provider
-        ChangeNotifierProvider(create: (_) => NotificationProvider()..initialize()),
+
+        // 5. Notification Provider
+        ChangeNotifierProvider(
+          create: (_) => NotificationProvider()..initialize(),
+        ),
       ],
       child: Builder(
         builder: (context) {
-          // 4. Break circular dependency: Inject Controller into DataService after creation
-          // We do this in a child Builder to ensure providers are ready
+          // Inject Controller into DataService after creation (breaks circular dep)
           final controller = context.read<InsightsController>();
           final dataService = context.read<UnifiedDataService>();
-          
+
           if (dataService.insightsController == null) {
             dataService.insightsController = controller;
-            // Re-attach listener if needed
-            controller.addListener(dataService.notifyUpdate);
+            // NOTE: Do NOT add controller.addListener(dataService.notifyUpdate) —
+            // it creates an infinite loop: InsightsController notifies → 
+            // UnifiedDataService.notifyUpdate → notifyListeners → 
+            // RealLiveTelemetrySource → 4 streams → InsightsController → ∞ loop
           }
-          
+
           return const MyApp();
         },
       ),
@@ -169,18 +195,17 @@ void _initializeServicesInBackground() {
     try {
       // Initialize Notification Service
       await NotificationService().initialize();
-      debugPrint('✅ NotificationService initialized in background');
+      debugPrint(' NotificationService initialized in background');
     } catch (e) {
-      debugPrint('⚠️  NotificationService initialization failed: $e');
+      debugPrint(' NotificationService initialization failed: $e');
     }
 
     try {
       // Initialize Scheduled Sync (Daily at 11 PM)
       await ScheduledSyncService.initializeScheduledSync();
-      debugPrint('✅ ScheduledSyncService initialized in background');
+      debugPrint('ScheduledSyncService initialized in background');
     } catch (e) {
-      debugPrint('⚠️  ScheduledSyncService initialization failed: $e');
+      debugPrint('ScheduledSyncService initialization failed: $e');
     }
   });
 }
-

@@ -17,6 +17,7 @@ class TremorHistoryPage extends StatefulWidget {
 
 class _TremorHistoryPageState extends State<TremorHistoryPage> {
   int _selectedDays = 7; // Default to 7 days
+  String _selectedMeal = 'All';
   List<DailyTremorSummary> _summaries = [];
   bool _isLoading = true;
 
@@ -62,10 +63,11 @@ class _TremorHistoryPageState extends State<TremorHistoryPage> {
       );
     }
 
+
     final sorted = [..._summaries]
       ..sort((a, b) => a.date.compareTo(b.date));
     final now = sorted.isEmpty ? DateTime.now() : sorted.last.date;
-    final display = _computeAggregates(sorted, now, _selectedDays);
+    final display = _computeAggregates(sorted, now, _selectedDays, _selectedMeal);
 
     return Scaffold(
       backgroundColor: WellnessColors.getBackground(context),
@@ -88,50 +90,33 @@ class _TremorHistoryPageState extends State<TremorHistoryPage> {
             const SizedBox(height: 24),
             
             // Time Range Dropdown (matching Eating Pattern design)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Daily Breakdown',
-                  style: GoogleFonts.outfit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: WellnessColors.getTextPrimary(context),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: WellnessColors.primaryBlue.withValues(alpha: 0.3)),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<int>(
-                      value: _selectedDays,
-                      isDense: true,
-                      icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: WellnessColors.primaryBlue),
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        color: WellnessColors.getTextPrimary(context),
-                        fontWeight: FontWeight.w500,
+            // Mobile-responsive Layout for Header + Dropdowns
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmall = constraints.maxWidth < 600;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isSmall)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildHeaderTitle(context),
+                          _buildDropdownsRow(context),
+                        ],
+                      )
+                    else ...[
+                      _buildHeaderTitle(context),
+                      const SizedBox(height: 12),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: _buildDropdownsRow(context),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 7, child: Text('Last 7 Days')),
-                        DropdownMenuItem(value: 30, child: Text('1 Month')),
-                        DropdownMenuItem(value: 60, child: Text('2 Months')),
-                        DropdownMenuItem(value: 90, child: Text('3 Months')),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() => _selectedDays = val);
-                          _loadData(); // Fetch new data when dropdown changes
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ],
+                    ],
+                  ],
+                );
+              },
             ),
             
             const SizedBox(height: 12),
@@ -151,11 +136,32 @@ class _TremorHistoryPageState extends State<TremorHistoryPage> {
     List<DailyTremorSummary> summaries,
     DateTime end,
     int days,
+    String mealType,
   ) {
     final start = end.subtract(Duration(days: days - 1));
-    final range = summaries
-        .where((s) => !s.date.isBefore(start) && !s.date.isAfter(end))
-        .toList();
+    var rawRange = summaries
+        .where((s) => !s.date.isBefore(start) && !s.date.isAfter(end));
+
+    List<DailyTremorSummary> range;
+    if (mealType == 'All') {
+      range = rawRange.toList();
+    } else {
+      range = rawRange.map((s) {
+        // Return the specific meal summary, or an empty one if missing
+        // Preserve the date from the parent
+        final mealSummary = s.mealBreakdown?[mealType];
+        if (mealSummary != null) return mealSummary;
+        
+        // Fallback empty summary
+        return DailyTremorSummary(
+          date: s.date,
+          avgMagnitude: 0,
+          peakMagnitude: 0,
+          avgFrequencyHz: 0,
+          dominantLevel: TremorLevel.low,
+        );
+      }).toList();
+    }
 
     if (range.isEmpty) {
       return _TremorAggregate(
@@ -194,6 +200,93 @@ class _TremorHistoryPageState extends State<TremorHistoryPage> {
       levelDistribution: levels,
     );
   }
+
+
+  Widget _buildHeaderTitle(BuildContext context) {
+    return Text(
+      'Daily Breakdown',
+      style: GoogleFonts.outfit(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: WellnessColors.getTextPrimary(context),
+      ),
+    );
+  }
+
+  Widget _buildDropdownsRow(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Meal Selection Dropdown
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: WellnessColors.primaryBlue.withValues(alpha: 0.3)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedMeal,
+              isDense: true,
+              icon: const Icon(Icons.keyboard_arrow_down,
+                  size: 18, color: WellnessColors.primaryBlue),
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: WellnessColors.getTextPrimary(context),
+                fontWeight: FontWeight.w500,
+              ),
+              items: ['All', 'Breakfast', 'Lunch', 'Snacks', 'Dinner']
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedMeal = val);
+                }
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Date Range Dropdown
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: WellnessColors.primaryBlue.withValues(alpha: 0.3)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedDays,
+              isDense: true,
+              icon: const Icon(Icons.keyboard_arrow_down,
+                  size: 18, color: WellnessColors.primaryBlue),
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: WellnessColors.getTextPrimary(context),
+                fontWeight: FontWeight.w500,
+              ),
+              items: const [
+                DropdownMenuItem(value: 7, child: Text('Last 7 Days')),
+                DropdownMenuItem(value: 30, child: Text('1 Month')),
+                DropdownMenuItem(value: 60, child: Text('2 Months')),
+                DropdownMenuItem(value: 90, child: Text('3 Months')),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedDays = val);
+                  _loadData(); // Fetch new data when dropdown changes
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _TremorAggregate {
@@ -220,30 +313,66 @@ class _OverviewStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _OverviewTile(
-            title: 'Period Average',
-            value: '${aggregate.avgMagnitude.toStringAsFixed(2)}',
-            unit: 'rad/s',
-            subtitle: 'Avg over $days days',
-            color: WellnessColors.primaryBlue,
-            icon: Icons.analytics,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _OverviewTile(
-            title: 'Peak Magnitude',
-            value: '${aggregate.peakMagnitude.toStringAsFixed(2)}',
-            unit: 'rad/s',
-            subtitle: 'Highest in period',
-            color: WellnessColors.warmRed,
-            icon: Icons.trending_up,
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 600;
+        
+        if (isNarrow) {
+          return Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: _OverviewTile(
+                  title: 'Period Average',
+                  value: aggregate.avgMagnitude.toStringAsFixed(2),
+                  unit: 'rad/s',
+                  subtitle: 'Avg over $days days',
+                  color: WellnessColors.primaryBlue,
+                  icon: Icons.analytics,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: _OverviewTile(
+                  title: 'Peak Magnitude',
+                  value: aggregate.peakMagnitude.toStringAsFixed(2),
+                  unit: 'rad/s',
+                  subtitle: 'Highest in period',
+                  color: WellnessColors.warmRed,
+                  icon: Icons.trending_up,
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(
+              child: _OverviewTile(
+                title: 'Period Average',
+                value: aggregate.avgMagnitude.toStringAsFixed(2),
+                unit: 'rad/s',
+                subtitle: 'Avg over $days days',
+                color: WellnessColors.primaryBlue,
+                icon: Icons.analytics,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _OverviewTile(
+                title: 'Peak Magnitude',
+                value: aggregate.peakMagnitude.toStringAsFixed(2),
+                unit: 'rad/s',
+                subtitle: 'Highest in period',
+                color: WellnessColors.warmRed,
+                icon: Icons.trending_up,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -431,8 +560,9 @@ class _EmailRequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     String selectedLabel;
-    if (days <= 7) selectedLabel = 'this week';
-    else if (days <= 30) selectedLabel = 'this month';
+    if (days <= 7) {
+      selectedLabel = 'this week';
+    } else if (days <= 30) selectedLabel = 'this month';
     else if (days <= 90) selectedLabel = 'last 3 months';
     else selectedLabel = 'selected period';
         

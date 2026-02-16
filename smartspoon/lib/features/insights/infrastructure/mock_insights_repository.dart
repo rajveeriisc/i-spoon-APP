@@ -200,28 +200,52 @@ class MockInsightsRepository implements InsightsRepository {
     final rnd = Random(99);
     final entries = <DailyTremorSummary>[];
     var cursor = DateTime(start.year, start.month, start.day);
-    while (!cursor.isAfter(end)) {
-      final avgMag = 0.3 + rnd.nextDouble() * 1.2;
-      final peakMag = avgMag + rnd.nextDouble() * 0.8;
-      final avgFreq = 4.5 + rnd.nextDouble() * 2.0;
+    
+    // Helper to generate random summary for a meal/day
+    DailyTremorSummary generateSummary(DateTime date, Random r) {
+      final avgMag = 0.3 + r.nextDouble() * 1.2;
+      final peakMag = avgMag + r.nextDouble() * 0.8;
+      final avgFreq = 4.5 + r.nextDouble() * 2.0;
       final level = peakMag < 0.6
           ? TremorLevel.low
           : peakMag < 1.4
               ? TremorLevel.moderate
               : TremorLevel.high;
+              
+      return DailyTremorSummary(
+        date: date,
+        avgMagnitude: double.parse(avgMag.toStringAsFixed(2)),
+        peakMagnitude: double.parse(peakMag.toStringAsFixed(2)),
+        avgFrequencyHz: double.parse(avgFreq.toStringAsFixed(2)),
+        dominantLevel: level,
+      );
+    }
+
+    while (!cursor.isAfter(end)) {
+      // 1. Generate overall summary
+      final overall = generateSummary(cursor, rnd);
+      
+      // 2. Generate meal breakdown
+      final breakdown = <String, DailyTremorSummary>{};
+      for (final meal in ['Breakfast', 'Lunch', 'Snacks', 'Dinner']) {
+        breakdown[meal] = generateSummary(cursor, rnd);
+      }
+
       entries.add(
         DailyTremorSummary(
           date: cursor,
-          avgMagnitude: double.parse(avgMag.toStringAsFixed(2)),
-          peakMagnitude: double.parse(peakMag.toStringAsFixed(2)),
-          avgFrequencyHz: double.parse(avgFreq.toStringAsFixed(2)),
-          dominantLevel: level,
+          avgMagnitude: overall.avgMagnitude,
+          peakMagnitude: overall.peakMagnitude,
+          avgFrequencyHz: overall.avgFrequencyHz,
+          dominantLevel: overall.dominantLevel,
+          mealBreakdown: breakdown,
         ),
       );
       cursor = cursor.add(const Duration(days: 1));
     }
     return entries;
   }
+
 
   @override
   Future<List<MealSummary>> getMealsForDate(DateTime date) async {

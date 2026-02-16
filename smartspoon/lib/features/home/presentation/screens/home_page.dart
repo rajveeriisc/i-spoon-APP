@@ -1,12 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:smartspoon/main.dart';
 import 'package:smartspoon/features/devices/index.dart';
 import 'package:smartspoon/core/providers/theme_provider.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:smartspoon/features/insights/presentation/insights_dashboard.dart';
 import 'package:smartspoon/features/profile/index.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/features/auth/index.dart';
@@ -251,6 +249,9 @@ class TemperatureDisplay extends StatelessWidget {
 
     return Consumer<UnifiedDataService>(
       builder: (context, dataService, _) {
+        // foodTempC already reads from McuBleService internally
+        final foodTemp = dataService.foodTempC;
+
         return Container(
           padding: EdgeInsets.all(screenWidth * 0.05),
           decoration: BoxDecoration(
@@ -283,8 +284,7 @@ class TemperatureDisplay extends StatelessWidget {
                   child: TemperatureColumn(
                     icon: Icons.thermostat,
                     label: 'Food Temp',
-                    temperature:
-                        '${dataService.foodTempC.toStringAsFixed(1)}°C',
+                    temperature: '${foodTemp.toStringAsFixed(1)}°C',
                     color: AppTheme.turquoise,
                     fontSize: screenWidth * 0.07,
                   ),
@@ -380,118 +380,163 @@ class MyDevices extends StatefulWidget {
 }
 
 class _MyDevicesState extends State<MyDevices> {
-  List<BluetoothDevice> _connected = const [];
-  List<_RecentDevice> _recent = const [];
-  bool _isLoading = true;
+  final _bleService = BleService();
 
   @override
   void initState() {
     super.initState();
-    _loadDevices();
+    // Refresh the service's knowledge of saved devices
+    _bleService.initialize();
+
+    // Auto-subscribe to MCU data after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupAutoSubscribe();
+    });
   }
 
-  Future<void> _loadDevices() async {
+  void _setupAutoSubscribe() {
+    debugPrint('🚀 Auto-subscribe setup started from MyDevices');
     try {
-      final connected = FlutterBluePlus.connectedDevices;
-      final prefs = await SharedPreferences.getInstance();
-      final list = prefs.getStringList('ble_recent') ?? const <String>[];
-      final parsed = list
-          .map((s) => _RecentDevice.fromString(s))
-          .whereType<_RecentDevice>()
-          .toList();
+      final bleService = context.read<BleService>();
+      final mcuService = context.read<McuBleService>();
 
-      // Check if widget is still mounted before calling setState
-      if (mounted) {
-        setState(() {
-          _connected = connected;
-          _recent = parsed;
-          _isLoading = false;
-        });
-      }
+      debugPrint('📱 Services obtained, checking connection status');
+
+      // Try to subscribe immediately if already connected
+      _tryAutoSubscribe(bleService, mcuService);
+
+      // Set up periodic retry (every 2 seconds) for up to 10 seconds
+      int attempts = 0;
+      Timer.periodic(const Duration(seconds: 2), (timer) {
+        attempts++;
+        if (attempts > 5 || mcuService.isSubscribed) {
+          timer.cancel();
+          if (mcuService.isSubscribed) {
+            debugPrint('✅ Auto-subscribe successful, stopping retries');
+          } else {
+            debugPrint('⏱️ Auto-subscribe timeout after 10 seconds');
+          }
+        } else {
+          _tryAutoSubscribe(bleService, mcuService);
+        }
+      });
     } catch (e) {
-      debugPrint('Error loading devices: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      debugPrint('❌ Auto-subscribe setup error: $e');
     }
+  }
+
+  void _tryAutoSubscribe(BleService bleService, McuBleService mcuService) {
+    final connectedIds = bleService.connectedDeviceIds;
+
+    debugPrint(
+      '🔍 Auto-subscribe check: connectedIds=${connectedIds.length}, isSubscribed=${mcuService.isSubscribed}',
+    );
+
+    if (connectedIds.isEmpty) {
+      debugPrint('⚠️ No connected devices');
+      return;
+    }
+
+    if (mcuService.isSubscribed) {
+      debugPrint('✅ Already subscribed, skipping');
+      return;
+    }
+
+    debugPrint('🔵 Attempting auto-subscribe to MCU data...');
+    mcuService
+        .subscribeToDevice(connectedIds.first)
+        .then((subscribed) {
+          if (subscribed) {
+            debugPrint('✅ Auto-subscribed to MCU data stream');
+          } else {
+            debugPrint('⚠️ Auto-subscribe attempt failed, will retry...');
+          }
+        })
+        .catchError((error) {
+          debugPrint('❌ Auto-subscribe error: $error');
+        });
   }
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
 
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    return ListenableBuilder(
+      listenable: _bleService,
+      builder: (context, _) {
+        final connectedIds = _bleService.connectedDeviceIds;
+        final savedDevices = _bleService.previousDevices;
 
-    final connectedIds = _connected.map((d) => d.remoteId.toString()).toSet();
-    final recentNotConnected = _recent
-        .where((r) => !connectedIds.contains(r.id))
-        .toList();
+        // Filter out saved devices that are currently connected to avoid duplicates
+        final disconnectedSaved = savedDevices
+            .where((d) => !connectedIds.contains(d.id))
+            .toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'My Devices',
-          style: GoogleFonts.lato(
-            fontSize: screenWidth * 0.055,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        SizedBox(height: screenWidth * 0.05),
+        final hasDevices =
+            connectedIds.isNotEmpty || disconnectedSaved.isNotEmpty;
 
-        // Live connected devices
-        ..._connected.map(
-          (d) => Padding(
-            padding: EdgeInsets.only(bottom: screenWidth * 0.04),
-            child: DeviceCard(
-              deviceName: d.platformName.isNotEmpty
-                  ? d.platformName
-                  : 'Unknown Device',
-              batteryLevel: '—',
-              lastUsed: 'Connected now',
-              isConnected: true,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'My Devices',
+              style: GoogleFonts.lato(
+                fontSize: screenWidth * 0.055,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-        ),
+            SizedBox(height: screenWidth * 0.05),
 
-        // Previously connected devices
-        ...recentNotConnected.map(
-          (r) => Padding(
-            padding: EdgeInsets.only(bottom: screenWidth * 0.04),
-            child: DeviceCard(
-              deviceName: r.name,
-              batteryLevel: '—',
-              lastUsed: 'Previously',
-              isConnected: false,
-            ),
-          ),
-        ),
+            if (!hasDevices)
+              Text(
+                'No devices yet',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: screenWidth * 0.04,
+                ),
+              ),
 
-        if (_connected.isEmpty && recentNotConnected.isEmpty)
-          Text(
-            'No devices yet',
-            style: TextStyle(color: Colors.grey, fontSize: screenWidth * 0.04),
-          ),
-      ],
+            // 1. Live Connected Devices
+            ...connectedIds.map((id) {
+              // Try to get name from discovered list or saved list
+              final device = _bleService.getDeviceById(id);
+              String name = device?.name ?? 'Unknown Device';
+              if (name.isEmpty) name = 'Unknown Device';
+
+              // If we can't find it in discovered, maybe it's in saved
+              if (device == null) {
+                final saved = savedDevices.where((d) => d.id == id).firstOrNull;
+                if (saved != null) name = saved.name;
+              }
+
+              return Padding(
+                padding: EdgeInsets.only(bottom: screenWidth * 0.04),
+                child: DeviceCard(
+                  deviceName: name,
+                  batteryLevel:
+                      '—', // Use real battery service if available later
+                  lastUsed: 'Now',
+                  isConnected: true,
+                ),
+              );
+            }),
+
+            // 2. Previously Connected Devices (Disconnected)
+            ...disconnectedSaved.map((d) {
+              return Padding(
+                padding: EdgeInsets.only(bottom: screenWidth * 0.04),
+                child: DeviceCard(
+                  deviceName: d.name,
+                  batteryLevel: '—',
+                  lastUsed: d.formattedLastConnected,
+                  isConnected: false,
+                ),
+              );
+            }),
+          ],
+        );
+      },
     );
-  }
-}
-
-class _RecentDevice {
-  final String id;
-  final String name;
-  const _RecentDevice({required this.id, required this.name});
-  static _RecentDevice? fromString(String s) {
-    final i = s.indexOf('|');
-    if (i <= 0) return null;
-    final id = s.substring(0, i);
-    final name = s.substring(i + 1);
-    if (id.isEmpty) return null;
-    return _RecentDevice(id: id, name: name.isEmpty ? 'Unknown Device' : name);
   }
 }
 

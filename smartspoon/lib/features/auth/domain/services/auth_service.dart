@@ -120,7 +120,10 @@ class AuthService {
       final resp = await http
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
             body: jsonEncode({'refreshToken': refreshToken}),
           )
           .timeout(AppConfig.connectionTimeout);
@@ -153,7 +156,10 @@ class AuthService {
     final resp = await http
         .post(
           uri,
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
           body: jsonEncode({'email': email.trim(), 'password': password}),
         )
         .timeout(AppConfig.connectionTimeout);
@@ -223,7 +229,10 @@ class AuthService {
     final resp = await http
         .post(
           uri,
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
           body: jsonEncode(body),
         )
         .timeout(AppConfig.connectionTimeout);
@@ -246,7 +255,10 @@ class AuthService {
     final resp = await http
         .post(
           uri,
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
           body: jsonEncode({
             'provider': provider,
             'email': email,
@@ -285,7 +297,10 @@ class AuthService {
     final resp = await http
         .post(
           uri,
-          headers: {'Content-Type': 'application/json'},
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
           body: jsonEncode({'idToken': idToken}),
         )
         .timeout(AppConfig.connectionTimeout);
@@ -409,6 +424,7 @@ class AuthService {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
+            'ngrok-skip-browser-warning': 'true',
           },
           body: jsonEncode(data),
         )
@@ -428,6 +444,7 @@ class AuthService {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
+            'ngrok-skip-browser-warning': 'true',
           },
         )
         .timeout(AppConfig.connectionTimeout);

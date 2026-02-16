@@ -71,7 +71,7 @@ class MealsAnalysisPage extends StatelessWidget {
                             Icon(Icons.no_food_outlined, size: 48, color: Colors.grey[400]),
                             const SizedBox(height: 16),
                             Text(
-                              "No meals recorded today",
+                              'No meals recorded today',
                               style: GoogleFonts.outfit(
                                 fontSize: 16,
                                 color: Colors.grey[600],

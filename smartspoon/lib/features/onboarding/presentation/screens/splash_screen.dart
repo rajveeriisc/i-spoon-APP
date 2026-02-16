@@ -60,11 +60,12 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _initApp() async {
     // Minimum splash duration
     final minDelay = Future<void>.delayed(const Duration(milliseconds: 1500));
-    
+
     try {
       // 1. Initialize Firebase
       final options = DefaultFirebaseOptions.currentPlatform;
-      if (kIsWeb && (options.appId.isEmpty || options.appId.contains('PLACEHOLDER'))) {
+      if (kIsWeb &&
+          (options.appId.isEmpty || options.appId.contains('PLACEHOLDER'))) {
         debugPrint('Skipping Firebase init on web (placeholder)');
       } else {
         await Firebase.initializeApp(options: options);
@@ -74,10 +75,9 @@ class _SplashScreenState extends State<SplashScreen>
       // 2. Initialize BLE
       final bleService = BleService();
       await bleService.initialize();
-      // Auto-connect in background
+      // Auto-connect in background (subscription will happen in app initialization)
       bleService.autoConnectToLastDevice().then((_) {}).catchError((_) {});
       debugPrint('✅ BLE Service initialized');
-
     } catch (e) {
       debugPrint('❌ Initialization error: $e');
       // Continue anyway, auth check might handle it or fail gracefully
@@ -102,13 +102,13 @@ class _SplashScreenState extends State<SplashScreen>
           final fbService = FirebaseAuthService();
           final user = fbService.currentUser;
           if (user != null) {
-             me = {
+            me = {
               'user': {
                 'id': 0, // Placeholder ID
                 'email': user.email,
                 'name': user.displayName,
                 'avatar_url': user.photoURL,
-              }
+              },
             };
             toHome = true;
           }

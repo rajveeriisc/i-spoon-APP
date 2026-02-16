@@ -66,6 +66,12 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Support nested objects in form data
 
+// Debug Request Logger
+app.use((req, res, next) => {
+  console.log(`[Request] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 
 // Serve static uploads
 app.use("/uploads", (req, res, next) => {

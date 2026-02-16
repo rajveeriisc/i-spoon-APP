@@ -156,8 +156,13 @@ export const addBitesToMeal = async (req, res) => {
             return res.status(403).json({ success: false, message: "Unauthorized" });
         }
 
-        // Add meal_id to each bite
-        const bitesWithMealId = bites.map(bite => ({ ...bite, meal_id: id }));
+        // Add meal_id to each bite and map frontend keys to backend model keys
+        const bitesWithMealId = bites.map(bite => ({
+            ...bite,
+            meal_id: id,
+            tremor_magnitude_rad_s: bite.tremor_magnitude,
+            tremor_frequency_hz: bite.tremor_frequency
+        }));
 
         const createdBites = await BiteModel.createBitesBatch(bitesWithMealId);
 

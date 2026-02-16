@@ -24,7 +24,7 @@ export const upsertFirmwareVersion = async ({
       RETURNING *
     `,
     [version, hardwareRevision, checksum, releaseNotes, releasedAt]
-  );      
+  );
 
   return result.rows[0];
 };
@@ -241,6 +241,64 @@ export const recordDeviceHealthSnapshot = async ({
     ]
   );
 
+  return result.rows[0];
+};
+
+/**
+ * Get all active devices for a user.
+ */
+export const getUserDevices = async (userId) => {
+  const result = await pool.query(
+    `
+      SELECT 
+        ud.id,
+        ud.user_id,
+        ud.device_id,
+        ud.nickname,
+        ud.auto_connect,
+        ud.is_primary,
+        ud.heater_active,
+        ud.heater_activation_temp,
+        ud.heater_max_temp,
+        d.serial_number,
+        d.ble_identifier,
+        d.hardware_revision,
+        d.firmware_version_id,
+        d.status,
+        fv.version as firmware_version
+      FROM user_devices ud
+      JOIN devices d ON ud.device_id = d.id
+      LEFT JOIN firmware_versions fv ON d.firmware_version_id = fv.id
+      WHERE ud.user_id = $1 AND ud.revoked_at IS NULL
+    `,
+    [userId]
+  );
+  return result.rows;
+};
+
+/**
+ * Update device settings (heater control).
+ */
+export const updateDeviceSettings = async ({
+  userId,
+  userDeviceId,
+  heaterActive,
+  heaterActivationTemp,
+  heaterMaxTemp,
+}) => {
+  const result = await pool.query(
+    `
+      UPDATE user_devices
+      SET
+        heater_active = COALESCE($3, heater_active),
+        heater_activation_temp = COALESCE($4, heater_activation_temp),
+        heater_max_temp = COALESCE($5, heater_max_temp),
+        updated_at = NOW()
+      WHERE id = $2 AND user_id = $1
+      RETURNING *
+    `,
+    [userId, userDeviceId, heaterActive, heaterActivationTemp, heaterMaxTemp]
+  );
   return result.rows[0];
 };
 

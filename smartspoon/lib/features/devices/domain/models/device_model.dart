@@ -6,6 +6,10 @@ class DeviceModel {
   final String? deviceType;
   final bool isConnected;
   final DateTime? lastConnected;
+  final String? userDeviceId;
+  final bool? heaterActive;
+  final double? heaterActivationTemp;
+  final double? heaterMaxTemp;
 
   DeviceModel({
     required this.id,
@@ -14,6 +18,10 @@ class DeviceModel {
     this.deviceType,
     this.isConnected = false,
     this.lastConnected,
+    this.userDeviceId,
+    this.heaterActive,
+    this.heaterActivationTemp,
+    this.heaterMaxTemp,
   });
 
   factory DeviceModel.fromJson(Map<String, dynamic> json) {
@@ -28,6 +36,10 @@ class DeviceModel {
           : json['lastConnected'] != null
               ? DateTime.tryParse(json['lastConnected'].toString())
               : null,
+      userDeviceId: json['user_device_id']?.toString() ?? (json['id']?.toString()), // Default to id if user_device_id missing in specific contexts
+      heaterActive: json['heater_active'] as bool?,
+      heaterActivationTemp: json['heater_activation_temp'] != null ? double.tryParse(json['heater_activation_temp'].toString()) : null,
+      heaterMaxTemp: json['heater_max_temp'] != null ? double.tryParse(json['heater_max_temp'].toString()) : null,
     );
   }
 
@@ -39,6 +51,10 @@ class DeviceModel {
       if (deviceType != null) 'device_type': deviceType,
       'is_connected': isConnected,
       if (lastConnected != null) 'last_connected': lastConnected!.toIso8601String(),
+      if (userDeviceId != null) 'user_device_id': userDeviceId,
+      if (heaterActive != null) 'heater_active': heaterActive,
+      if (heaterActivationTemp != null) 'heater_activation_temp': heaterActivationTemp,
+      if (heaterMaxTemp != null) 'heater_max_temp': heaterMaxTemp,
     };
   }
 
@@ -49,6 +65,10 @@ class DeviceModel {
     String? deviceType,
     bool? isConnected,
     DateTime? lastConnected,
+    String? userDeviceId,
+    bool? heaterActive,
+    double? heaterActivationTemp,
+    double? heaterMaxTemp,
   }) {
     return DeviceModel(
       id: id ?? this.id,
@@ -57,6 +77,10 @@ class DeviceModel {
       deviceType: deviceType ?? this.deviceType,
       isConnected: isConnected ?? this.isConnected,
       lastConnected: lastConnected ?? this.lastConnected,
+      userDeviceId: userDeviceId ?? this.userDeviceId,
+      heaterActive: heaterActive ?? this.heaterActive,
+      heaterActivationTemp: heaterActivationTemp ?? this.heaterActivationTemp,
+      heaterMaxTemp: heaterMaxTemp ?? this.heaterMaxTemp,
     );
   }
 }

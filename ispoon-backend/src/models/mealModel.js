@@ -10,6 +10,7 @@ export const getUserMeals = async (userId, { limit = 20, offset = 0, mealType = 
     SELECT 
       id, user_id, device_id, started_at, ended_at, meal_type,
       total_bites, avg_pace_bpm, tremor_index, duration_minutes,
+      avg_food_temp_c,
       created_at, updated_at
     FROM meals
     WHERE user_id = $1
@@ -49,16 +50,24 @@ export const createMeal = async (mealData) => {
         total_bites = 0,
         avg_pace_bpm = null,
         tremor_index = null,
-        duration_minutes = null
+        duration_minutes = null,
+        avg_food_temp_c = null,
+        max_food_temp_c = null,
+        min_food_temp_c = null
     } = mealData;
 
     const res = await pool.query(
         `INSERT INTO meals (
       user_id, device_id, started_at, ended_at, meal_type,
-      total_bites, avg_pace_bpm, tremor_index, duration_minutes
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      total_bites, avg_pace_bpm, tremor_index, duration_minutes,
+      avg_food_temp_c, max_food_temp_c, min_food_temp_c
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *`,
-        [user_id, device_id, started_at, ended_at, meal_type, total_bites, avg_pace_bpm, tremor_index, duration_minutes]
+        [
+            user_id, device_id, started_at, ended_at, meal_type,
+            total_bites, avg_pace_bpm, tremor_index, duration_minutes,
+            avg_food_temp_c, max_food_temp_c, min_food_temp_c
+        ]
     );
 
     return res.rows[0];
@@ -68,7 +77,8 @@ export const createMeal = async (mealData) => {
 export const updateMeal = async (mealId, updates) => {
     const allowed = [
         'ended_at', 'meal_type', 'total_bites', 'avg_pace_bpm',
-        'tremor_index', 'duration_minutes'
+        'tremor_index', 'duration_minutes',
+        'avg_food_temp_c', 'max_food_temp_c', 'min_food_temp_c'
     ];
 
     const setClauses = [];

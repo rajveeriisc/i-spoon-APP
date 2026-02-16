@@ -5,6 +5,7 @@ import '../domain/models.dart';
 
 class InsightsController with ChangeNotifier {
   final InsightsRepository _repository;
+  Timer? _tremorRefreshTimer;
 
   InsightsController(this._repository);
 
@@ -36,6 +37,21 @@ class InsightsController with ChangeNotifier {
   Future<void> init() async {
     await fetchHistory(90); // Fetch all 3 months so details pages have data
     _subscribeLive();
+    // Refresh tremor summaries every 30 seconds for real-time table updates
+    _tremorRefreshTimer?.cancel();
+    _tremorRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _refreshTremorSummaries();
+    });
+  }
+
+  Future<void> _refreshTremorSummaries() async {
+    final now = DateTime.now();
+    final start = now.subtract(const Duration(days: 90));
+    _tremorSummaries = await _repository.getDailyTremorSummaries(
+      start: start,
+      end: now,
+    );
+    notifyListeners();
   }
 
   Future<void> fetchHistory(int days) async {
@@ -59,11 +75,6 @@ class InsightsController with ChangeNotifier {
     // For granular timeline (Bites)
     // We might want to limit this if range is huge, but for now matching the range
     _bites = await _repository.getBiteEvents(start: historyStart, end: now);
-    
-    _trends = await _repository.getTrends(
-      start: historyStart,
-      end: now,
-    );
     
     notifyListeners();
   }
@@ -89,6 +100,7 @@ class InsightsController with ChangeNotifier {
 
   @override
   void dispose() {
+    _tremorRefreshTimer?.cancel();
     _tempSub?.cancel();
     _tremorSub?.cancel();
     _healthSub?.cancel();

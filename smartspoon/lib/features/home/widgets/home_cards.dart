@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:smartspoon/core/widgets/app_card.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/features/devices/index.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:smartspoon/features/devices/presentation/screens/ble_settings_screen.dart';
 
 /// BLE Device Card - Shows connected device with battery and status
 class SpoonConnectedCard extends StatefulWidget {
@@ -16,74 +16,12 @@ class SpoonConnectedCard extends StatefulWidget {
 
 class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
   late BleService _bleService;
-  BluetoothDevice? _connectedDevice;
-  SavedBleDevice? _lastDevice;
-  final int _batteryLevel = 0;
-  // TODO: Read from BLE characteristic
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initializeBleService();
-  }
-
-  Future<void> _initializeBleService() async {
-    _bleService = BleService();
-    try {
-      await _bleService.initialize();
-      await _bleService.refresh();
-
-      _bleService.addListener(_onBleUpdate);
-      _updateDeviceInfo();
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error initializing BLE: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _onBleUpdate() {
-    if (mounted) {
-      _updateDeviceInfo();
-    }
-  }
-
-  void _updateDeviceInfo() {
-    final connected = _bleService.connectedDevices;
-    final previous = _bleService.previousDevices;
-
-    setState(() {
-      _connectedDevice = connected.isNotEmpty ? connected.first : null;
-      _lastDevice = previous.isNotEmpty ? previous.first : null;
-    });
-
-    // If connected, try to read battery
-    if (_connectedDevice != null) {
-      _readBatteryLevel();
-    }
-  }
-
-  Future<void> _readBatteryLevel() async {
-    // TODO: Implement battery reading from BLE characteristic
-    // Battery Service UUID: 0x180F
-    // Battery Level Characteristic UUID: 0x2A19
-    try {
-      // Placeholder - will implement when device supports it
-      // final services = await _connectedDevice!.discoverServices();
-      // Find and read battery characteristic
-    } catch (e) {
-      debugPrint('Error reading battery: $e');
-    }
+    // Use the shared services from Provider
+    _bleService = Provider.of<BleService>(context, listen: false);
   }
 
   void _navigateToAddDevice() {
@@ -94,93 +32,135 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
   }
 
   void _navigateToDeviceDetails() {
-    if (_connectedDevice != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DeviceDetailsScreen(device: _connectedDevice!),
+    // Get the connected device info
+    final connectedIds = _bleService.connectedDeviceIds;
+    if (connectedIds.isEmpty) return;
+
+    final id = connectedIds.first;
+    final device = _bleService.getDeviceById(id);
+    final deviceName = device?.name ?? 'I-Spoon Device';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BleSettingsScreen(
+          deviceId: id,
+          deviceName: deviceName.isEmpty ? 'I-Spoon Device' : deviceName,
         ),
-      );
-    }
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _bleService.removeListener(_onBleUpdate);
-    super.dispose();
+  Future<void> _handleReconnect() async {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Attempting to reconnect...')));
+    await _bleService.autoConnectToLastDevice();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isConnected = _connectedDevice != null;
-    final hasLastDevice = _lastDevice != null;
+    return ListenableBuilder(
+      listenable: _bleService,
+      builder: (context, _) {
+        final connectedIds = _bleService.connectedDeviceIds;
+        final savedDevices = _bleService.previousDevices;
+        // Read battery from UnifiedDataService (updates every 5s, not 5x/sec)
+        final dataService = Provider.of<UnifiedDataService>(context);
+        final batteryLevel = dataService.batteryLevel;
 
-    if (_isLoading) {
-      return AppCard(
+        final isConnected = connectedIds.isNotEmpty;
+        final hasLastDevice = savedDevices.isNotEmpty;
+
+        // 1. Initial State: No devices ever connected
+        if (!isConnected && !hasLastDevice) {
+          return _buildNoDeviceCard();
+        }
+
+        // 2. Determine which device to show
+        // If connected, show the first connected device
+        // If not connected, show the last saved device
+        String deviceName = 'Unknown Device';
+        String lastConnectedText = '';
+
+        if (isConnected) {
+          final id = connectedIds.first;
+          final device = _bleService.getDeviceById(id);
+          deviceName = device?.name ?? 'I-Spoon Device';
+          if (deviceName.isEmpty) deviceName = 'I-Spoon Device';
+        } else if (hasLastDevice) {
+          final last = savedDevices.first;
+          deviceName = last.name;
+          lastConnectedText = last.formattedLastConnected;
+        }
+
+        return _buildStatusCard(
+          isConnected: isConnected,
+          deviceName: deviceName,
+          lastConnectedText: lastConnectedText,
+          batteryLevel: batteryLevel,
+        );
+      },
+    );
+  }
+
+  Widget _buildNoDeviceCard() {
+    return InkWell(
+      onTap: _navigateToAddDevice,
+      borderRadius: BorderRadius.circular(16),
+      child: AppCard(
         padding: const EdgeInsets.all(20),
-        child: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    // No device case
-    if (!isConnected && !hasLastDevice) {
-      return InkWell(
-        onTap: _navigateToAddDevice,
-        borderRadius: BorderRadius.circular(16),
-        child: AppCard(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.bluetooth_searching,
-                  size: 32,
-                  color: Colors.grey.shade600,
-                ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'No Device Connected',
-                      style: GoogleFonts.lato(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tap to add your I-Spoon device',
-                      style: GoogleFonts.lato(
-                        fontSize: 14,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
+              child: Icon(
+                Icons.bluetooth_searching,
+                size: 32,
+                color: Colors.grey.shade600,
               ),
-              Icon(Icons.add_circle, color: Colors.grey.shade400, size: 28),
-            ],
-          ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No Device Connected',
+                    style: GoogleFonts.lato(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tap to add your I-Spoon device',
+                    style: GoogleFonts.lato(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.add_circle, color: Colors.grey.shade400, size: 28),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    // Get device info
-    final deviceName = isConnected
-        ? (_connectedDevice!.platformName.isNotEmpty
-              ? _connectedDevice!.platformName
-              : 'I-Spoon Device')
-        : _lastDevice!.name;
-
+  Widget _buildStatusCard({
+    required bool isConnected,
+    required String deviceName,
+    required String lastConnectedText,
+    required int batteryLevel,
+  }) {
     return InkWell(
       onTap: isConnected ? _navigateToDeviceDetails : _navigateToAddDevice,
       borderRadius: BorderRadius.circular(16),
@@ -276,14 +256,14 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                   Row(
                     children: [
                       Icon(
-                        _getBatteryIcon(_batteryLevel),
+                        _getBatteryIcon(batteryLevel),
                         size: 20,
-                        color: _getBatteryColor(_batteryLevel),
+                        color: _getBatteryColor(batteryLevel),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _batteryLevel > 0
-                            ? 'Battery: $_batteryLevel%'
+                        batteryLevel > 0
+                            ? 'Battery: $batteryLevel%'
                             : 'Battery: N/A',
                         style: GoogleFonts.lato(
                           fontSize: 14,
@@ -302,7 +282,7 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Last: ${_lastDevice!.formattedLastConnected}',
+                        'Last: $lastConnectedText',
                         style: GoogleFonts.lato(
                           fontSize: 14,
                           color: Colors.grey.shade600,
@@ -316,13 +296,13 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                 TextButton.icon(
                   onPressed: isConnected
                       ? _navigateToDeviceDetails
-                      : _navigateToAddDevice,
+                      : _handleReconnect,
                   icon: Icon(
-                    isConnected ? Icons.settings : Icons.bluetooth_searching,
+                    isConnected ? Icons.settings : Icons.refresh,
                     size: 16,
                   ),
                   label: Text(
-                    isConnected ? 'Details' : 'Reconnect',
+                    isConnected ? 'Settings' : 'Reconnect',
                     style: const TextStyle(fontSize: 14),
                   ),
                   style: TextButton.styleFrom(
@@ -487,13 +467,14 @@ class EatingAnalysisCard extends StatelessWidget {
                       ),
                       _AnalysisItem(
                         icon: Icons.timer,
-                        value: '${(dataService.avgBiteTime).toStringAsFixed(1)}s',
+                        value:
+                            '${(dataService.avgBiteTime).toStringAsFixed(1)}s',
                         label: 'Avg/Bite',
                         color: const Color(0xFFEC407A),
                       ),
                       _AnalysisItem(
                         icon: Icons.speed,
-                        value: dataService.eatingSpeed,
+                        value: dataService.eatingSpeed.toStringAsFixed(1),
                         label: 'Speed',
                         color: const Color(0xFFEF5350),
                       ),

@@ -55,6 +55,10 @@ class NotificationScheduler {
             this.clearOldThrottleLogs();
         }));
 
+        // Test Notification - Every 2 minutes (DISABLED FOR PRODUCTION)
+        // Uncomment the line below for testing only
+        // this.jobs.push(cron.schedule('*/2 * * * *', () => { this.sendTestNotification(); }));
+
         console.log(`[NotificationScheduler] ${this.jobs.length} cron jobs initialized`);
     }
 
@@ -239,6 +243,69 @@ class NotificationScheduler {
             }
         } catch (error) {
             console.error('[NotificationScheduler] Error clearing throttle logs:', error);
+        }
+    }
+
+    /**
+     * Send test notification to all users (bypasses throttling)
+     */
+    async sendTestNotification() {
+        console.log('[NotificationScheduler] Sending test notification...');
+        try {
+            // Import FCM service
+            const { default: FCMService } = await import('./fcmService.js');
+            const NotificationModel = await import('../models/notificationModel.js');
+
+            // Fetch all users with FCM tokens
+            const res = await pool.query(`
+                SELECT u.id, u.name, unp.fcm_token 
+                FROM users u
+                JOIN user_notification_preferences unp ON u.id = unp.user_id
+                WHERE unp.fcm_token IS NOT NULL 
+                  AND unp.enabled = TRUE
+            `);
+
+            let sentCount = 0;
+            let failedCount = 0;
+
+            for (const user of res.rows) {
+                try {
+                    // Create notification object
+                    const notification = {
+                        id: Date.now(), // Temporary ID
+                        user_id: user.id,
+                        type: 'system_alert',
+                        priority: 'HIGH',
+                        title: 'Test Notification',
+                        body: `Hello ${user.name || 'User'}! This is a test notification at ${new Date().toLocaleTimeString()}`,
+                        action_type: '',
+                        action_data: { test: true }
+                    };
+
+                    // Send directly via FCM (bypasses throttling)
+                    const result = await FCMService.sendNotification(notification, user.fcm_token);
+
+                    if (result.success) {
+                        sentCount++;
+                        console.log(`✅ Test notification sent to user ${user.id}`);
+                    } else {
+                        failedCount++;
+                        console.log(`❌ Failed to send to user ${user.id}: ${result.error}`);
+
+                        // Remove invalid token
+                        if (result.shouldRemoveToken) {
+                            await NotificationModel.updateUserPreferences(user.id, { fcm_token: null });
+                        }
+                    }
+                } catch (error) {
+                    failedCount++;
+                    console.error(`❌ Error sending to user ${user.id}:`, error.message);
+                }
+            }
+
+            console.log(`[NotificationScheduler] Test notifications: ${sentCount} sent, ${failedCount} failed`);
+        } catch (error) {
+            console.error('[NotificationScheduler] Error sending test notification:', error);
         }
     }
 

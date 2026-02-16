@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/features/insights/index.dart';
-import 'package:smartspoon/features/insights/presentation/bite_history_page.dart';
 import 'package:smartspoon/features/insights/presentation/widgets/tremor_breakdown_chart.dart';
 import 'package:smartspoon/features/auth/providers/user_provider.dart';
 
@@ -360,26 +359,30 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
        return todaySummary.mealBites[key] ?? todaySummary.mealBites[key.toLowerCase()] ?? 0;
     }
 
+    // Since meal-specific goals were removed, distribute dailyGoal equally
+    final dailyGoal = user.dailyGoal ?? 50;
+    final defaultMealGoal = (dailyGoal / 4).round(); // Equal distribution across 4 meals
+
     final meals = [
       {
         'name': 'Breakfast', 
         'bites': getActual('Breakfast'), 
-        'goal': user.breakfastGoal,
+        'goal': defaultMealGoal,
       },
       {
         'name': 'Lunch', 
         'bites': getActual('Lunch'), 
-        'goal': user.lunchGoal,
+        'goal': defaultMealGoal,
       },
       {
         'name': 'Dinner', 
         'bites': getActual('Dinner'), 
-        'goal': user.dinnerGoal,
+        'goal': defaultMealGoal,
       },
       {
         'name': 'Snacks', 
         'bites': getActual('Snacks'), 
-        'goal': user.snackGoal,
+        'goal': defaultMealGoal,
       },
     ];
 
@@ -519,7 +522,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
               const SizedBox(height: 6),
               Text(
                 totalEvents > 0
-                    ? 'Your tremor level was mostly $levelText today. ${totalEvents} tremor events recorded.'
+                    ? 'Your tremor level was mostly $levelText today. $totalEvents tremor events recorded.'
                     : 'No tremor data recorded today.',
                 style: GoogleFonts.outfit(
                   fontSize: 14,

@@ -5,7 +5,32 @@ import {
   linkDeviceToUser,
   recordDeviceHealthSnapshot,
   upsertFirmwareVersion,
+  updateDeviceSettings,
+  getUserDevices as getUserDevicesModel,
 } from "../models/deviceModel.js";
+
+// ... existing imports
+
+// ... existing code ...
+
+export const getUserDevices = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const devices = await getUserDevicesModel(userId);
+
+    res.json({
+      message: "User devices retrieved",
+      devices,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 const parseIntOrNull = (value) => {
   const n = Number(value);
@@ -199,6 +224,45 @@ export const recordHealth = async (req, res, next) => {
     res.status(201).json({
       message: "Device health snapshot recorded",
       snapshot,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateSettings = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { userDeviceId } = req.params;
+    const {
+      heaterActive,
+      heaterActivationTemp,
+      heaterMaxTemp,
+    } = req.body;
+
+    if (!userDeviceId) {
+      return res.status(400).json({ message: "userDeviceId is required" });
+    }
+
+    const updated = await updateDeviceSettings({
+      userId,
+      userDeviceId: parseInt(userDeviceId, 10),
+      heaterActive: parseBoolean(heaterActive),
+      heaterActivationTemp: heaterActivationTemp != null ? Number(heaterActivationTemp) : null,
+      heaterMaxTemp: heaterMaxTemp != null ? Number(heaterMaxTemp) : null,
+    });
+
+    if (!updated) {
+      return res.status(404).json({ message: "Device not found or not owned by user" });
+    }
+
+    res.json({
+      message: "Settings updated",
+      settings: updated,
     });
   } catch (error) {
     next(error);

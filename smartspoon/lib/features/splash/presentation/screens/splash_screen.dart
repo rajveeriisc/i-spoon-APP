@@ -54,27 +54,53 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _bootstrapAuth() async {
+    debugPrint('🚀 Splash: Starting auth bootstrap...');
     // Show splash at least ~1.2s
     final minDelay = Future<void>.delayed(const Duration(milliseconds: 1200));
+    
     bool toHome = false;
     Map<String, dynamic>? me;
+    
     try {
+      debugPrint('🚀 Splash: Check token...');
       final token = await AuthService.getToken();
+      
       if (token != null) {
-        final res = await AuthService.getMe();
+        debugPrint('🚀 Splash: Token found, fetching profile...');
+        // Add timeout to prevent hanging indefinitely
+        final res = await AuthService.getMe().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('⚠️ Splash: Auth timeout!');
+            throw TimeoutException('Auth check timed out');
+          },
+        );
+        
         me = res;
         toHome = res['user'] != null;
+        debugPrint('🚀 Splash: Profile loaded: $toHome');
+      } else {
+        debugPrint('🚀 Splash: No token found');
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('❌ Splash: Auth error: $e');
       toHome = false;
     }
+    
     await minDelay;
+    
     if (!mounted) return;
+    
+    debugPrint('🚀 Splash: Navigating to ${toHome ? 'Home' : 'Login'}');
+    
     if (toHome) {
       try {
         final userMap = me!['user'] as Map<String, dynamic>;
+        // Use listen: false to avoid unnecessary rebuilds during navigation
         Provider.of<UserProvider>(context, listen: false).setFromMap(userMap);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('❌ Splash: UserProvider mismatch: $e');
+      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const HomePage()),
       );

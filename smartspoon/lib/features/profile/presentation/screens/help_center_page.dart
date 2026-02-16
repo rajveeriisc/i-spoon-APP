@@ -74,7 +74,7 @@ class HelpCenterPage extends StatelessWidget {
   }) {
     return Card(
       elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceVariant.withValues(alpha: 0.3),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
