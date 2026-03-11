@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/premium_widgets.dart';
 
 class TremorBreakdownChart extends StatelessWidget {
+  final int lowCount;
+  final int moderateCount;
+  final int highCount;
+
   const TremorBreakdownChart({
     super.key,
     required this.lowCount,
@@ -9,132 +15,136 @@ class TremorBreakdownChart extends StatelessWidget {
     required this.highCount,
   });
 
-  final int lowCount;
-  final int moderateCount;
-  final int highCount;
-
   @override
   Widget build(BuildContext context) {
     final total = lowCount + moderateCount + highCount;
-    
-    if (total == 0) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FA),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE8EDF2)),
-        ),
-        child: Center(
+
+    return PremiumGlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Today's Tremor Distribution",
+            style: GoogleFonts.manrope(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            total == 0 ? 'No tremor events recorded' : '$total events recorded today',
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (total == 0)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 48,
+                      color: AppTheme.emerald.withValues(alpha: 0.6),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No tremors detected',
+                      style: GoogleFonts.manrope(
+                        fontSize: 14,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            _BreakdownBar(
+              label: 'Low',
+              count: lowCount,
+              total: total,
+              color: AppTheme.emerald,
+            ),
+            const SizedBox(height: 10),
+            _BreakdownBar(
+              label: 'Moderate',
+              count: moderateCount,
+              total: total,
+              color: AppTheme.amber,
+            ),
+            const SizedBox(height: 10),
+            _BreakdownBar(
+              label: 'High',
+              count: highCount,
+              total: total,
+              color: const Color(0xFFEF4444),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BreakdownBar extends StatelessWidget {
+  final String label;
+  final int count;
+  final int total;
+  final Color color;
+
+  const _BreakdownBar({
+    required this.label,
+    required this.count,
+    required this.total,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = total > 0 ? count / total : 0.0;
+    final percent = (fraction * 100).toStringAsFixed(0);
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
           child: Text(
-            'No tremor data available',
-            style: GoogleFonts.outfit(
-              fontSize: 14,
-              color: const Color(0xFF64748B),
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: color,
             ),
           ),
         ),
-      );
-    }
-
-    final lowPercent = (lowCount / total * 100).round();
-    final moderatePercent = (moderateCount / total * 100).round();
-    final highPercent = (highCount / total * 100).round();
-
-    final levels = [
-      {'name': 'Low', 'count': lowCount, 'percentage': lowPercent, 'color': const Color(0xFF34C759)},
-      {'name': 'Moderate', 'count': moderateCount, 'percentage': moderatePercent, 'color': const Color(0xFFFFB100)},
-      {'name': 'High', 'count': highCount, 'percentage': highPercent, 'color': const Color(0xFFFF3B30)},
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8EDF2)),
-      ),
-      child: Column(
-        children: levels.where((level) => (level['count'] as int) > 0).map((level) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: level['color'] as Color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          level['name'] as String,
-                          style: GoogleFonts.outfit(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF475569),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '${level['count']} events',
-                      style: GoogleFonts.outfit(
-                        fontSize: 12,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Stack(
-                  children: [
-                    Container(
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE2E8F0),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    FractionallySizedBox(
-                      widthFactor: (level['percentage'] as int) / 100,
-                      child: Container(
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: (level['color'] as Color).withValues(alpha: 0.8),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 10,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: Text(
-                          '${level['percentage']}%',
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF2E3A4A),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: 12,
+              backgroundColor: color.withValues(alpha: 0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
-          );
-        }).toList(),
-      ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 50,
+          child: Text(
+            '$count ($percent%)',
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

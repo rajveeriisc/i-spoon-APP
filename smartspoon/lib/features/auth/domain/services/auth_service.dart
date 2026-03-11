@@ -1,10 +1,9 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
-import 'package:mime/mime.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartspoon/core/config/app_config.dart';
 
 /// Simple JWT decoder for extracting token expiry
@@ -41,7 +40,12 @@ class _JWTDecoder {
 class AuthService {
   AuthService._();
 
-  static final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  static final FlutterSecureStorage _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+      resetOnError: true,
+    ),
+  );
 
   static final Map<String, String?> _memoryStorage = <String, String?>{};
 
@@ -49,31 +53,87 @@ class AuthService {
   static Timer? _refreshTimer;
 
   static Future<void> _setItem(String key, String value) async {
+    _memoryStorage[key] = value; // Always save to memory cache
+
+    // Fallback to SharedPreferences only in debug builds (dev convenience).
+    // In release builds tokens must only live in encrypted SecureStorage.
+    if (kDebugMode) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('fallback_auth_$key', value);
+      } catch (_) {}
+    }
+
     try {
       await _storage.write(key: key, value: value);
-    } catch (_) {
-      _memoryStorage[key] = value;
+    } catch (e) {
+      debugPrint('SecureStorage write error: $e');
+      try {
+        await _storage.deleteAll();
+        await _storage.write(key: key, value: value);
+      } catch (e2) {
+        debugPrint('SecureStorage fallback write error: $e2');
+      }
     }
   }
 
   static Future<String?> _getItem(String key) async {
-    try {
-      return await _storage.read(key: key);
-    } catch (_) {
+    // Return memory cache first if we wrote it this session
+    if (_memoryStorage.containsKey(key) && _memoryStorage[key] != null) {
       return _memoryStorage[key];
     }
+
+    String? finalValue;
+    try {
+      finalValue = await _storage.read(key: key);
+    } catch (e) {
+      debugPrint('SecureStorage read error: $e');
+    }
+
+    // Fallback to SharedPreferences only in debug builds
+    if (finalValue == null && kDebugMode) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        finalValue = prefs.getString('fallback_auth_$key');
+      } catch (_) {}
+    }
+
+    if (finalValue != null) {
+      _memoryStorage[key] = finalValue; // populate memory cache
+    }
+    return finalValue;
   }
 
   static Future<void> _removeItem(String key) async {
+    _memoryStorage.remove(key);
+
+    if (kDebugMode) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('fallback_auth_$key');
+      } catch (_) {}
+    }
+
     try {
       await _storage.delete(key: key);
-    } catch (_) {
-      _memoryStorage.remove(key);
+    } catch (e) {
+      debugPrint('SecureStorage delete error: $e');
     }
   }
 
   static String get baseUrl => AppConfig.baseUrl;
   static String get apiBaseUrl => AppConfig.apiBaseUrl;
+
+  /// Returns ngrok tunnel bypass headers only in debug builds targeting a tunnel URL.
+  static Map<String, String> _debugHeaders() {
+    if (kDebugMode && apiBaseUrl.contains('ngrok')) {
+      return {
+        'ngrok-skip-browser-warning': 'true',
+        'Bypass-Tunnel-Reminder': 'true',
+      };
+    }
+    return {};
+  }
 
   /// Check backend connectivity
   static Future<bool> checkBackendHealth() async {
@@ -122,7 +182,7 @@ class AuthService {
             uri,
             headers: {
               'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true',
+              ..._debugHeaders(),
             },
             body: jsonEncode({'refreshToken': refreshToken}),
           )
@@ -153,17 +213,18 @@ class AuthService {
     required String password,
   }) async {
     final uri = Uri.parse('$apiBaseUrl/auth/login');
+    debugPrint('🚀 Login: POST to $uri');
     final resp = await http
         .post(
           uri,
           headers: {
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
+            ..._debugHeaders(),
           },
           body: jsonEncode({'email': email.trim(), 'password': password}),
         )
         .timeout(AppConfig.connectionTimeout);
-
+    debugPrint('🚀 Login: Response status: ${resp.statusCode}');
     final Map<String, dynamic> data = _decodeBody(resp.body);
     if (resp.statusCode == 200) {
       await _saveTokensFromResponse(data);
@@ -226,16 +287,18 @@ class AuthService {
       'password': password,
       if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
     };
+    debugPrint('🚀 Signup: POST to $uri');
     final resp = await http
         .post(
           uri,
           headers: {
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
+            ..._debugHeaders(),
           },
           body: jsonEncode(body),
         )
         .timeout(AppConfig.connectionTimeout);
+    debugPrint('🚀 Signup: Response status: ${resp.statusCode}');
     final Map<String, dynamic> data = _decodeBody(resp.body);
     if (resp.statusCode == 201) {
       return data;
@@ -257,7 +320,7 @@ class AuthService {
           uri,
           headers: {
             'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
+            ..._debugHeaders(),
           },
           body: jsonEncode({
             'provider': provider,
@@ -294,22 +357,32 @@ class AuthService {
     required String idToken,
   }) async {
     final uri = Uri.parse('$apiBaseUrl/auth/firebase/verify');
-    final resp = await http
-        .post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
-          },
-          body: jsonEncode({'idToken': idToken}),
-        )
-        .timeout(AppConfig.connectionTimeout);
-    final data = _decodeBody(resp.body);
-    if (resp.statusCode >= 200 && resp.statusCode < 300) {
-      await _saveTokensFromResponse(data);
-      return data;
+    debugPrint('🚀 Firebase Verify: POST to $uri');
+    try {
+      final resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              ..._debugHeaders(),
+            },
+            body: jsonEncode({'idToken': idToken}),
+          )
+          .timeout(AppConfig.connectionTimeout);
+      debugPrint('🚀 Firebase Verify: Response status: ${resp.statusCode}');
+      debugPrint('🚀 Firebase Verify: Raw body: ${resp.body}');
+      
+      final data = _decodeBody(resp.body);
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        await _saveTokensFromResponse(data);
+        return data;
+      }
+      throw AuthException(_extractErrorMessage(data));
+    } catch (e, stack) {
+      debugPrint('🚀 Firebase Verify: EXCEPTION CAUGHT: $e\\n$stack');
+      if (e is AuthException) rethrow;
+      throw AuthException('Network/parsing error during verify: $e');
     }
-    throw AuthException(_extractErrorMessage(data));
   }
 
   static Future<void> logout({bool silent = false}) async {
@@ -367,7 +440,12 @@ class AuthService {
     final token = await getToken();
     if (token == null) return null;
     final payload = _JWTDecoder.decodePayload(token);
-    return payload?['id'] as String?;
+    final id = payload?['id'];
+    if (id == null) return null;
+    if (id is String) return id;
+    if (id is int) return id.toString();
+    if (id is double) return id.toInt().toString();
+    return null; // Unknown type — don't crash, return null
   }
 
   static Completer<String?>? _refreshCompleter;
@@ -412,6 +490,13 @@ class AuthService {
     return token;
   }
 
+  static Map<String, dynamic> _unwrapData(Map<String, dynamic> body) {
+    if (body.containsKey('data') && body['data'] is Map<String, dynamic>) {
+      return body['data'] as Map<String, dynamic>;
+    }
+    return body;
+  }
+
   static Future<Map<String, dynamic>> updateProfile({
     required Map<String, dynamic> data,
   }) async {
@@ -424,13 +509,13 @@ class AuthService {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
-            'ngrok-skip-browser-warning': 'true',
+            ..._debugHeaders(),
           },
           body: jsonEncode(data),
         )
         .timeout(AppConfig.connectionTimeout);
     final body = _decodeBody(resp.body);
-    if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
+    if (resp.statusCode >= 200 && resp.statusCode < 300) return _unwrapData(body);
     throw AuthException(_extractErrorMessage(body));
   }
 
@@ -444,57 +529,14 @@ class AuthService {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $token',
-            'ngrok-skip-browser-warning': 'true',
+            ..._debugHeaders(),
           },
         )
         .timeout(AppConfig.connectionTimeout);
     final body = _decodeBody(resp.body);
-    if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
+    if (resp.statusCode >= 200 && resp.statusCode < 300) return _unwrapData(body);
     throw AuthException(_extractErrorMessage(body));
   }
-
-  static Future<Map<String, dynamic>> uploadAvatar({
-    required List<int> bytes,
-    required String filename,
-  }) async {
-    final token = await getValidToken();
-    if (token == null) throw AuthException('Not authenticated');
-    final uri = Uri.parse('$apiBaseUrl/users/me/avatar');
-    final request = http.MultipartRequest('POST', uri);
-    request.headers['Authorization'] = 'Bearer $token';
-    final mimeType =
-        lookupMimeType(filename, headerBytes: bytes) ?? 'image/jpeg';
-    final parts = mimeType.split('/');
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'avatar',
-        bytes,
-        filename: filename,
-        contentType: MediaType(parts.first, parts.last),
-      ),
-    );
-    final streamed = await request.send().timeout(
-      const Duration(seconds: 30),
-    ); // Longer timeout for file uploads
-    final resp = await http.Response.fromStream(streamed);
-    final body = _decodeBody(resp.body);
-    if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
-    throw AuthException(_extractErrorMessage(body));
-  }
-
-  static Future<Map<String, dynamic>> removeAvatar() async {
-    final token = await getValidToken();
-    if (token == null) throw AuthException('Not authenticated');
-    final uri = Uri.parse('$apiBaseUrl/users/me/avatar');
-    final resp = await http
-        .delete(uri, headers: {'Authorization': 'Bearer $token'})
-        .timeout(AppConfig.connectionTimeout);
-    final body = _decodeBody(resp.body);
-    if (resp.statusCode >= 200 && resp.statusCode < 300) return body;
-    throw AuthException(_extractErrorMessage(body));
-  }
-
-  // Trends/stats removed per requirements
 
   // Forgot password: request reset link via email
   static Future<void> requestPasswordReset({required String email}) async {

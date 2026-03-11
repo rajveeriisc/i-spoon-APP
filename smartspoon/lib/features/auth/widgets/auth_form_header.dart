@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
 
 class AuthFormHeader extends StatelessWidget {
   const AuthFormHeader({
@@ -13,32 +15,55 @@ class AuthFormHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final textTheme = Theme.of(context).textTheme;
-    final headline = textTheme.headlineSmall ?? const TextStyle(fontSize: 24);
-    final body = textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
 
     return Column(
       children: [
+        // Glowing spoon icon
+        Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppTheme.emerald.withValues(alpha: 0.1),
+            border: Border.all(
+              color: AppTheme.emerald.withValues(alpha: 0.4),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.emerald.withValues(alpha: 0.30),
+                blurRadius: 24,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.restaurant,
+            color: AppTheme.emerald,
+            size: 34,
+          ),
+        ),
+        const SizedBox(height: 24),
         Text(
           title,
-          style: headline.copyWith(
-            fontSize: width > 360 ? 32 : 24,
+          style: GoogleFonts.manrope(
+            fontSize: 28,
             fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurface,
+            letterSpacing: -0.5,
           ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           subtitle,
-          style: body.copyWith(
-            fontSize: width > 360 ? 16 : 12,
-            color: Theme.of(
-              context,
-            ).colorScheme.onSurface.withValues(alpha: 0.8),
+          style: GoogleFonts.manrope(
+            fontSize: 16,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
           ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 32),
       ],
     );
   }

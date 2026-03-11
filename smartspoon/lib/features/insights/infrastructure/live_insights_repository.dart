@@ -1,8 +1,7 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/core/services/database_service.dart';
-import 'package:smartspoon/core/models/meal.dart';
-import 'package:smartspoon/core/services/mock_data_service.dart';
 
 /// Real implementation of LiveTelemetrySource that adapts UnifiedDataService
 class RealLiveTelemetrySource implements LiveTelemetrySource {
@@ -26,23 +25,22 @@ class RealLiveTelemetrySource implements LiveTelemetrySource {
     ));
 
     // 2. Tremor
-    final tremorIndex = _dataService.tremorIndex;
     final result = _dataService.lastTremorResult;
 
-    // Map 0-3 index to TremorLevel
-    // 0-1 = Low, 1-2 = Moderate, 2-3 = High
+    // Map amplitude to TremorLevel — unified with DB thresholds (0.6 / 1.4)
+    final magnitude = result.amplitude / 100.0;
     TremorLevel level;
-    if (tremorIndex < 1.0) {
+    if (magnitude < 0.6) {
       level = TremorLevel.low;
-    } else if (tremorIndex < 2.0) {
+    } else if (magnitude < 1.4) {
       level = TremorLevel.moderate;
     } else {
       level = TremorLevel.high;
     }
     
     _tremorCtrl.add(TremorMetrics(
-      currentMagnitude: result.amplitude, // Use actual amplitude from analysis
-      peakFrequencyHz: result.frequency,  // Use actual frequency from analysis
+      currentMagnitude: magnitude, // Scaled (amplitude / 100.0), range 0–3, matches DB thresholds
+      peakFrequencyHz: result.frequency,
       level: level,
     ));
 
@@ -52,6 +50,8 @@ class RealLiveTelemetrySource implements LiveTelemetrySource {
       voltage: 3.7, // Fixed for now
       chargeCycles: 0,
       sensorsHealthy: true,
+      batteryStatus: _dataService.batteryLevel > 20 ? 'Good' : 'Low',
+      lastSync: DateTime.now(),
     ));
 
     // 4. Environment (Mock for now as we don't have sensors)
@@ -90,12 +90,21 @@ class LiveInsightsRepository implements InsightsRepository {
 
   LiveInsightsRepository(this._dataService) {
     _live = RealLiveTelemetrySource(_dataService);
-    _initData();
+    // NOTE: async init is exposed via initAsync() so callers can await it.
+    // Do NOT call _initData() here — let InsightsController.init() await it.
   }
-  
-  Future<void> _initData() async {
-    // Auto-seed mock data for demo purposes if DB is empty
-    await MockDataService().seedDatabase(days: 90);
+
+  /// Must be awaited before fetchHistory() so backfill completes first.
+  Future<void> initAsync() async {
+    final db = DatabaseService();
+    final userId = _currentUserId;
+    if (userId.isEmpty) return;
+
+    // Backfill daily_summaries for any meal dates that are missing a summary row.
+    await db.backfillMissingSummaries(userId);
+
+    // Reload today's snapshot in UnifiedDataService so home cards reflect reality.
+    _dataService.refreshTodaySnapshot();
   }
 
   @override
@@ -147,8 +156,6 @@ class LiveInsightsRepository implements InsightsRepository {
     required DateTime start,
     required DateTime end,
   }) async {
-    // Determine number of days
-    final days = end.difference(start).inDays + 1;
     final meals = await _db.getMeals(limit: 1000); // Fetch enough history
     
     // Filter by date range
@@ -185,59 +192,43 @@ class LiveInsightsRepository implements InsightsRepository {
     required DateTime start,
     required DateTime end,
   }) async {
-    final meals = await _db.getMeals(limit: 500);
-    
-    // Filter and Group by Date
-    final Map<String, List<Meal>> grouped = {};
-    
-    for (var m in meals) {
-      if (m.startedAt.isBefore(start) || m.startedAt.isAfter(end.add(const Duration(days: 1)))) continue;
-      
-      final key = '${m.startedAt.year}-${m.startedAt.month}-${m.startedAt.day}';
-      if (!grouped.containsKey(key)) grouped[key] = [];
-      grouped[key]!.add(m);
-    }
-    
-    final summaries = <DailyBiteSummary>[];
-    
-    grouped.forEach((key, dayMeals) {
-      int totalBites = 0;
-      double totalDuration = 0;
-      double avgPaceSum = 0;
-      
-      final Map<String, int> mealBites = {
-        'Breakfast': 0, 'Lunch': 0, 'Dinner': 0, 'Snacks': 0
-      };
-      
-      for (var m in dayMeals) {
-        totalBites += m.totalBites;
-        totalDuration += m.durationMinutes ?? 0;
-        avgPaceSum += m.avgPaceBpm ?? 0;
-        
-        // Categorize if type is missing (simple logic)
-        String type = m.mealType ?? 'Snacks';
-        if (m.mealType == null) {
-          final h = m.startedAt.hour;
-          if (h >= 5 && h < 11) {
-            type = 'Breakfast';
-          } else if (h >= 11 && h < 16) type = 'Lunch';
-          else if (h >= 16 && h < 22) type = 'Dinner';
-        }
-        
-        mealBites[type] = (mealBites[type] ?? 0) + m.totalBites;
-      }
-      
-      summaries.add(DailyBiteSummary(
-        date: dayMeals.first.startedAt, // Approximate date
+    // Fast path: read from pre-aggregated daily_summaries table.
+    // Falls back to empty list if table doesn't exist yet (new install before first meal).
+    final userId = _currentUserId;
+    final rows = await _db.getDailySummaries(
+      userId: userId,
+      start: start,
+      end: end,
+    );
+
+    return rows.map((r) {
+      final dateStr = r['date'] as String; // "YYYY-MM-DD" local date
+      // Parse as LOCAL midnight — DateTime.parse("YYYY-MM-DD") creates UTC midnight
+      // which causes day-mismatch in non-UTC timezones (e.g. IST, EST).
+      final parts = dateStr.split('-');
+      final date = DateTime(
+        int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+      final totalBites = (r['total_bites'] as num?)?.toInt() ?? 0;
+      final totalMinutes = (r['total_eating_min'] as num?)?.toDouble() ?? 0.0;
+      // Compute bpm from aggregated data: bites / total_minutes.
+      // avg_pace_bpm per meal is not stored in daily_summaries, so we derive it.
+      final avgPace = (totalMinutes > 0 && totalBites > 0)
+          ? totalBites / totalMinutes
+          : 0.0;
+      return DailyBiteSummary(
+        date: date,
         totalBites: totalBites,
-        avgMealDurationMin: dayMeals.isNotEmpty ? totalDuration / dayMeals.length : 0,
-        totalDurationMin: totalDuration,
-        avgPaceBpm: dayMeals.isNotEmpty ? avgPaceSum / dayMeals.length : 0,
-        mealBites: mealBites,
-      ));
-    });
-    
-    return summaries;
+        avgMealDurationMin: totalMinutes,
+        totalDurationMin: totalMinutes,
+        avgPaceBpm: avgPace,
+        mealBites: {
+          'Breakfast': (r['breakfast_bites'] as num?)?.toInt() ?? 0,
+          'Lunch':     (r['lunch_bites']     as num?)?.toInt() ?? 0,
+          'Dinner':    (r['dinner_bites']    as num?)?.toInt() ?? 0,
+          'Snacks':    (r['snack_bites']     as num?)?.toInt() ?? 0,
+        },
+      );
+    }).toList();
   }
 
   @override
@@ -245,90 +236,84 @@ class LiveInsightsRepository implements InsightsRepository {
     required DateTime start,
     required DateTime end,
   }) async {
-    // Use the new SQL aggregation for accurate bite-level stats
-    final stats = await _db.getDailyTremorStats(start: start, end: end);
-    final mealStats = await _db.getMealTypeTremorStats(start: start, end: end);
-    
-    // Helper to convert DB row to Summary
-    DailyTremorSummary rowToSummary(Map<String, dynamic> row, {Map<String, DailyTremorSummary>? breakdown}) {
-      final dateStr = row['date'] as String;
-      final avgFreq = (row['avg_frequency'] as num?)?.toDouble() ?? 0.0;
-      final avgMagQuery = (row['avg_magnitude'] as num?)?.toDouble() ?? 0.0;
-      final peakMagQuery = (row['peak_magnitude'] as num?)?.toDouble() ?? 0.0;
-      
-      final lowCount = (row['low_count'] as num?)?.toInt() ?? 0;
-      final moderateCount = (row['moderate_count'] as num?)?.toInt() ?? 0;
-      final highCount = (row['high_count'] as num?)?.toInt() ?? 0;
-      
-      final date = DateTime.parse(dateStr);
-      
-      final level = avgMagQuery < 0.6
-          ? TremorLevel.low
-          : avgMagQuery < 1.4
-              ? TremorLevel.moderate
-              : TremorLevel.high;
+    // Primary: read pre-aggregated tremor counts from daily_summaries.
+    final userId = _currentUserId;
+    final rows = await _db.getDailySummaries(userId: userId, start: start, end: end);
 
-      return DailyTremorSummary(
-        date: date,
-        avgMagnitude: avgMagQuery,
-        peakMagnitude: peakMagQuery,
-        avgFrequencyHz: avgFreq,
-        dominantLevel: level,
+    // Secondary: per-meal-type breakdown — only computed on demand (Tremor History page).
+    final mealStats = await _db.getMealTypeTremorStats(start: start, end: end);
+    final Map<String, Map<String, DailyTremorSummary>> breakdowns = {};
+    for (final row in mealStats) {
+      final dateStr = row['date'] as String;
+      final mealType = row['meal_type'] as String? ?? 'Snacks';
+      final avgMag = (row['avg_magnitude'] as num?)?.toDouble() ?? 0.0;
+      breakdowns.putIfAbsent(dateStr, () => {})[mealType] = DailyTremorSummary(
+        date: _parseLocalDate(dateStr),
+        avgMagnitude: avgMag,
+        avgFrequencyHz: (row['avg_frequency'] as num?)?.toDouble() ?? 0.0,
+        dominantLevel: avgMag < 0.6 ? TremorLevel.low : avgMag < 1.4 ? TremorLevel.moderate : TremorLevel.high,
         tremorLevelCounts: {
-          'low': lowCount,
-          'moderate': moderateCount,
-          'high': highCount,
+          'low':      (row['low_count']      as num?)?.toInt() ?? 0,
+          'moderate': (row['moderate_count'] as num?)?.toInt() ?? 0,
+          'high':     (row['high_count']     as num?)?.toInt() ?? 0,
         },
-        mealBreakdown: breakdown,
       );
     }
 
-    // Process meal stats into a map of date -> breakdown
-    final Map<String, Map<String, DailyTremorSummary>> breakdowns = {};
-    
-    for (var row in mealStats) {
-      final dateStr = row['date'] as String;
-      final mealType = row['meal_type'] as String? ?? 'Snacks'; // Default if null
-      
-      if (!breakdowns.containsKey(dateStr)) {
-        breakdowns[dateStr] = {};
-      }
-      breakdowns[dateStr]![mealType] = rowToSummary(row);
-    }
-
-    final summaries = <DailyTremorSummary>[];
-    
-    for (var row in stats) {
-      final dateStr = row['date'] as String;
-      summaries.add(rowToSummary(row, breakdown: breakdowns[dateStr]));
-    }
-     
-    return summaries;
+    return rows.map((r) {
+      final dateStr = r['date'] as String;
+      final avgMag = (r['avg_tremor_magnitude'] as num?)?.toDouble() ?? 0.0;
+      final avgFreq = (r['avg_tremor_frequency'] as num?)?.toDouble() ?? 0.0;
+      final level = avgMag < 0.6 ? TremorLevel.low : avgMag < 1.4 ? TremorLevel.moderate : TremorLevel.high;
+      return DailyTremorSummary(
+        date: _parseLocalDate(dateStr),
+        avgMagnitude: avgMag,
+        avgFrequencyHz: avgFreq,
+        dominantLevel: level,
+        tremorLevelCounts: {
+          'low':      (r['tremor_low_count']      as num?)?.toInt() ?? 0,
+          'moderate': (r['tremor_moderate_count'] as num?)?.toInt() ?? 0,
+          'high':     (r['tremor_high_count']     as num?)?.toInt() ?? 0,
+        },
+        mealBreakdown: breakdowns[dateStr],
+      );
+    }).toList();
   }
 
   @override
   Future<List<MealSummary>> getMealsForDate(DateTime date) async {
     final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    
-    // We reuse getMeals but filter locally for simplicity, or we could add a date range query to DatabaseService
-    // Given the scale, fetching recent 100 and filtering is safe enough for MVP
-    final allMeals = await _db.getMeals(limit: 100); 
-    
-    final dayMeals = allMeals.where((m) => 
-      m.startedAt.isAfter(startOfDay.subtract(const Duration(seconds: 1))) && 
-      m.startedAt.isBefore(endOfDay)
-    ).toList();
+    final endOfDay   = startOfDay.add(const Duration(days: 1));
+    final userId = FirebaseAuth.instance.currentUser?.uid;
 
-    return dayMeals.map((m) => MealSummary(
-      totalBites: m.totalBites,
-      eatingPaceBpm: m.avgPaceBpm ?? 0.0,
-      tremorIndex: m.tremorIndex ?? 0,
-      lastMealStart: m.startedAt,
-      lastMealEnd: m.endedAt,
-      mealType: m.mealType ?? 'Snack', // Default to Snack if unknown
+    // Use SQL date-range query — filtered by userId to prevent cross-user leakage
+    final meals = await _db.getMealsForDateRange(startOfDay, endOfDay,
+        userId: userId);
+
+    return meals.map((m) => MealSummary(
+      totalBites:     m.totalBites,
+      eatingPaceBpm:  m.avgPaceBpm ?? 0.0,
+      tremorIndex:    m.tremorIndex ?? 0,
+      lastMealStart:  m.startedAt,
+      lastMealEnd:    m.endedAt,
+      mealType:       (m.mealType == 'Snack' ? 'Snacks' : m.mealType) ?? 'Snacks',
       durationMinutes: m.durationMinutes ?? 0.0,
     )).toList();
+  }
+
+  /// Single source of truth for current user ID across all queries.
+  /// Falls back to empty string so DB queries return empty (safe) rather than
+  /// leaking data from another user.
+  String get _currentUserId =>
+      FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  /// Parse a "YYYY-MM-DD" string as LOCAL midnight.
+  /// DateTime.parse("YYYY-MM-DD") creates UTC midnight which causes day-off
+  /// mismatches when the device timezone is ahead or behind UTC.
+  static DateTime _parseLocalDate(String dateStr) {
+    final parts = dateStr.split('-');
+    return DateTime(
+      int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
   }
 }
 

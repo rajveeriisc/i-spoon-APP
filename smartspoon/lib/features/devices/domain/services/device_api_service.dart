@@ -17,7 +17,7 @@ class DeviceApiService {
 
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/api/devices/user-devices'),
+        Uri.parse('$_baseUrl/devices/user-devices'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -48,7 +48,7 @@ class DeviceApiService {
 
     try {
       final response = await http.patch(
-        Uri.parse('$_baseUrl/api/devices/user-devices/$userDeviceId/settings'),
+        Uri.parse('$_baseUrl/devices/$userDeviceId/settings'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

@@ -59,55 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
         final idToken = result['token'] as String;
-        
-        // ✅ Exchange Firebase token for backend JWT
-        try {
-          await AuthService.verifyFirebaseToken(idToken: idToken);
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Backend sync failed: ${e.toString()}')),
-          );
-          return;
-        }
-        
-        // Get backend JWT token (not Firebase token)
-        final storedJwt = await AuthService.getToken();
-        if (storedJwt == null) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Authentication failed. Please try again.'),
-            ),
-          );
-          return;
-        }
-        
-        // Get user data from backend
-        try {
-          final me = await AuthService.getMe();
-          if (!mounted) return;
-          final userMap = me['user'] as Map<String, dynamic>? ?? me;
-          Provider.of<UserProvider>(
-            context,
-            listen: false,
-          ).setFromMap(userMap);
-           
-           // Note: Welcome email is now handled by the backend on first login after verification.
-           // No need to call it from the client on every login.
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load profile: ${e.toString()}')),
-          );
-        }
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Welcome back!')));
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomePage()),
-        );
+        await _handleAuthSuccess(idToken: idToken, welcomeMessage: 'Welcome back!');
       } else {
         throw AuthException(result['message'] as String? ?? 'Login failed');
       }
@@ -251,6 +203,51 @@ class _LoginScreenState extends State<LoginScreen> {
     ];
   }
 
+  /// Shared post-auth success logic: exchange token, fetch profile, navigate home
+  Future<void> _handleAuthSuccess({required String idToken, String welcomeMessage = 'Welcome!'}) async {
+    // Exchange Firebase token for backend JWT
+    try {
+      await AuthService.verifyFirebaseToken(idToken: idToken);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backend sync failed (v7): ${e.toString()}')),
+      );
+      return;
+    }
+
+    // Verify backend JWT was stored
+    final storedJwt = await AuthService.getToken();
+    if (storedJwt == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authentication failed. Please try again.')),
+      );
+      return;
+    }
+
+    // Fetch user profile from backend
+    try {
+      final me = await AuthService.getMe();
+      if (!mounted) return;
+      final userMap = me['user'] as Map<String, dynamic>? ?? me;
+      Provider.of<UserProvider>(context, listen: false).setFromMap(userMap);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load profile: ${e.toString()}')),
+      );
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(welcomeMessage)),
+    );
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const HomePage()),
+    );
+  }
+
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
 
@@ -262,57 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result['success'] == true) {
         final idToken = result['token'] as String;
-        
-        // ✅ Exchange Firebase token for backend JWT
-        try {
-          await AuthService.verifyFirebaseToken(idToken: idToken);
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Backend sync failed: ${e.toString()}')),
-          );
-          return;
-        }
-        
-        // Get backend JWT token
-        final storedJwt = await AuthService.getToken();
-        if (storedJwt == null) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Authentication failed. Please try again.'),
-            ),
-          );
-          return;
-        }
-         
-        // Get user data from backend
-        try {
-          final me = await AuthService.getMe();
-          if (!mounted) return;
-          final userMap = me['user'] as Map<String, dynamic>? ?? me;
-          Provider.of<UserProvider>(
-            context,
-            listen: false,
-          ).setFromMap(userMap);
-          
-          
-          // Note: Welcome email is now handled by the backend on first login after verification.
-          // No need to call it from the client on every login.
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load profile: ${e.toString()}')),
-          );
-        }
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Welcome!')));
-
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
+        await _handleAuthSuccess(idToken: idToken, welcomeMessage: 'Welcome!');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(result['message'] ?? 'Google sign-in failed')),

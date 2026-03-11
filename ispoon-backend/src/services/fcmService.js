@@ -1,5 +1,4 @@
 import admin from 'firebase-admin';
-import NotificationService from '../services/notificationService.js';
 
 /**
  * FCM Delivery Service - Handles Firebase Cloud Messaging

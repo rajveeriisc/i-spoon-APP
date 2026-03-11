@@ -2,5 +2,6 @@
 library;
 
 export 'screens/add_device_screen.dart';
+export 'screens/ble_settings_screen.dart';
 export 'screens/device_details_screen.dart';
 export 'screens/mcu_debug_screen.dart';

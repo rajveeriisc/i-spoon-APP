@@ -29,10 +29,10 @@ class HeaderSection extends StatelessWidget {
               children: [
                 Text(
                   'Your Meal Insights',
-                  style: GoogleFonts.lato(
-                    fontSize: 24,
+                  style: GoogleFonts.manrope(
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -40,7 +40,7 @@ class HeaderSection extends StatelessWidget {
                   'Last updated: just now',
                   style: GoogleFonts.lato(
                     fontSize: 14,
-                    color: Colors.white.withValues(alpha: 0.71),
+                    color: const Color(0xFF475569),
                   ),
                 ),
               ],

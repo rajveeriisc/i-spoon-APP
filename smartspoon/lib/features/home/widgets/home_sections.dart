@@ -27,6 +27,11 @@ class HomeSections extends StatelessWidget {
           const EatingAnalysisCard(),
           const SizedBox(height: 24),
           
+          // Today's Meals Table
+          // Today's Meals Table
+          const TodayMealsTable(),
+          const SizedBox(height: 24),
+          
           // Health Insights Header
           Text(
             'Health Insights',

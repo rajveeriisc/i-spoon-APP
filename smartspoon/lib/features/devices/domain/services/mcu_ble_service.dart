@@ -1,19 +1,17 @@
 import 'dart:async';
+import 'dart:math' show sqrt;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'ble_service.dart';
+import 'smart_spoon_ble_service.dart'; // For kMcuServiceUuid / kMcuCharUuid
 
-/// MCU BLE Data Model
+/// Parsed data from one MCU sample (1/10 of a BLE packet).
 class McuSensorData {
-  final double accelX;
-  final double accelY;
-  final double accelZ;
-  final double gyroX;
-  final double gyroY;
-  final double gyroZ;
-  double temperature; // Made mutable so we can update it after parsing
+  final double accelX, accelY, accelZ;
+  final double gyroX, gyroY, gyroZ;
+  double temperature; // mutable: updated after header parsing
   final DateTime timestamp;
-  final String rawData;
 
   McuSensorData({
     required this.accelX,
@@ -24,482 +22,565 @@ class McuSensorData {
     required this.gyroZ,
     required this.temperature,
     DateTime? timestamp,
-    String? rawData,
-  }) : timestamp = timestamp ?? DateTime.now(),
-       rawData = rawData ?? '';
+  }) : timestamp = timestamp ?? DateTime.now();
 
-  /// Calculate acceleration magnitude (in g)
   double get accelMagnitude =>
-      (accelX * accelX + accelY * accelY + accelZ * accelZ);
-
-  /// Calculate gyroscope magnitude (in deg/s)
-  double get gyroMagnitude => (gyroX * gyroX + gyroY * gyroY + gyroZ * gyroZ);
-
-  /// Calculate linear acceleration (subtract gravity)
+      sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ);
+  double get gyroMagnitude =>
+      sqrt(gyroX * gyroX + gyroY * gyroY + gyroZ * gyroZ);
   double get linearAccel => (accelMagnitude - 1.0).abs();
 
   @override
-  String toString() {
-    return 'Accel(${accelX.toStringAsFixed(3)},${accelY.toStringAsFixed(3)},${accelZ.toStringAsFixed(3)}) '
-        'Gyro(${gyroX.toStringAsFixed(3)},${gyroY.toStringAsFixed(3)},${gyroZ.toStringAsFixed(3)}) '
-        'Temp:${temperature.toStringAsFixed(2)}°C';
-  }
+  String toString() =>
+      'A(${accelX.toStringAsFixed(3)},${accelY.toStringAsFixed(3)},${accelZ.toStringAsFixed(3)}) '
+      'G(${gyroX.toStringAsFixed(3)},${gyroY.toStringAsFixed(3)},${gyroZ.toStringAsFixed(3)}) '
+      'T:${temperature.toStringAsFixed(2)}°C';
 }
 
-/// MCU BLE Service using flutter_reactive_ble
+/// MCU BLE Service — subscribes to IMU/sensor data from ALL already-connected
+/// Smart Spoon devices and surfaces merged data to the UI layer.
+///
+/// Design contract:
+/// - [BleService] owns the GATT connections. This service ONLY subscribes to
+///   characteristics once BleService reports devices as connected.
+/// - It does NOT open its own connectToDevice() streams — that avoids duplicate
+///   GATT connections and the "two instances competing" bug.
+/// - When BleService disconnects a device, this service cleans up that device's
+///   subscription but keeps other devices' subscriptions running.
+/// - Data from ALL connected spoons is merged into a single stream/state.
+///
+/// Packet format (ESP32 C struct, 132 bytes new / 127 bytes legacy):
+///
+///   [0]     battery   uint8
+///   [1]     padding   (132-byte only)
+///   [2-3]   temp      int16  LE  (÷100 → °C)
+///   [4-7]   timestamp uint32 LE
+///   [8-9]   biteCount uint16 LE  (132-byte only)
+///   [10-131] 10×IMU   int16×6 each (÷1000 → g / deg·s⁻¹)
 class McuBleService extends ChangeNotifier {
+  // ── Internal state ───────────────────────────────────────────────────────
   final FlutterReactiveBle _ble = FlutterReactiveBle();
-  final BleService _bleService = BleService(); // Singleton access
+  final BleService _bleService = BleService();
 
-  // UUIDs for MCU service and characteristics
-  final Uuid serviceUuid = Uuid.parse('12345678-1234-1234-1234-1234567890ab');
-  final Uuid imuCharUuid = Uuid.parse('12345678-1234-1234-1234-1234567890ac');
+  // Per-device subscriptions
+  final Map<String, StreamSubscription<List<int>>> _charSubs = {};
+  final Map<String, bool> _subscribing = {}; // re-entrancy guard per device
 
-  // Connection and subscription streams
-  StreamSubscription<ConnectionStateUpdate>? _connectionSubscription;
-  StreamSubscription<List<int>>? _characteristicSubscription;
-
-  String? _connectedDeviceId;
-  bool _isConnected = false;
-  bool _isSubscribed = false;
-
-  // Sensor data
+  // Merged/latest sensor state (from whichever device sent data most recently)
   McuSensorData? _currentData;
   double _temp = 0.0;
   int _batteryLevel = 0;
+  int _hardwareBiteCount = 0;
 
-  // Data queue for background processing
-  final List<List<int>> _dataQueue = [];
-  Timer? _processingTimer;
-  Timer? _pollingTimer; // Timer for polling data when stationary
-  int _receivedPackets = 0;
+  // Packet queue & processor
+  final List<List<int>> _queue = [];
+  Timer? _processorTimer;
 
-  // Raw data log (last 20 entries)
-  final List<String> _rawDataLog = [];
-
-  // Additional tracking for settings screen
+  // Stats for debug screen
   List<int>? _lastRawPacket;
   DateTime? _lastPacketTime;
-  int _packetsInLastSecond = 0;
-  DateTime _lastSecondTimestamp = DateTime.now();
-  int _totalBytesReceived = 0;
-  double _currentPacketsPerSecond = 0.0;
-  double _currentDataRate = 0.0;
-  
-  // Rate limiting for notifications
-  DateTime _lastNotifyTime = DateTime.fromMillisecondsSinceEpoch(0);
+  int _receivedPackets = 0;
+  double _packetsPerSecond = 0.0;
+  double _dataRateBytesPerSec = 0.0;
+  int _packetsThisSecond = 0;
+  int _bytesThisSecond = 0;
+  DateTime _statWindowStart = DateTime.now();
 
-  // Stream for batched sensor data (for analysis)
-  final _sensorBatchController =
+  // Rate-limit UI notifyListeners to 10 Hz (100 ms)
+  DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
+
+  // Raw log (last 20 lines)
+  final List<String> _rawLog = [];
+
+  // Broadcast stream of batched sensor samples (for tremor / analytics)
+  final StreamController<List<McuSensorData>> _batchController =
       StreamController<List<McuSensorData>>.broadcast();
   Stream<List<McuSensorData>> get sensorBatchStream =>
-      _sensorBatchController.stream;
+      _batchController.stream;
 
-  // Public getters
-  bool get isConnected => _isConnected;
-  bool get isSubscribed => _isSubscribed;
+  // ── Public getters ───────────────────────────────────────────────────────
+  bool get isConnected => _charSubs.isNotEmpty;
+  bool get isSubscribed => _charSubs.isNotEmpty;
+  /// Returns the first subscribed device ID, or null if none.
+  String? get connectedDeviceId =>
+      _charSubs.isNotEmpty ? _charSubs.keys.first : null;
+  /// Returns all subscribed device IDs.
+  Set<String> get subscribedDeviceIds => Set.unmodifiable(_charSubs.keys);
   int get batteryLevel => _batteryLevel;
   double get temperature => _temp;
+  int get hardwareBiteCount => _hardwareBiteCount;
   McuSensorData? get currentData => _currentData;
-  List<String> get rawDataLog => List.unmodifiable(_rawDataLog);
-
-  // Additional getters for settings screen
   List<int>? get lastRawPacket => _lastRawPacket;
   DateTime? get lastPacketTime => _lastPacketTime;
   int get receivedPackets => _receivedPackets;
-  double get packetsPerSecond => _currentPacketsPerSecond;
-  double get dataRate => _currentDataRate; // bytes per second
+  double get packetsPerSecond => _packetsPerSecond;
+  double get dataRate => _dataRateBytesPerSec;
+  List<String> get rawDataLog => List.unmodifiable(_rawLog);
+
+  // ── Constructor / lifecycle ──────────────────────────────────────────────
 
   McuBleService() {
-    // Listen to BleService for connection updates
     _bleService.addListener(_onBleServiceChanged);
-    // Check initial state in case already connected
-    _onBleServiceChanged();
-  }
-
-  /// Handle updates from BleService
-  void _onBleServiceChanged() {
-    final connectedIds = _bleService.connectedDeviceIds;
-    
-    // If we are connected to a device that BleService says is disconnected, clean up
-    if (_connectedDeviceId != null &&
-        !connectedIds.contains(_connectedDeviceId)) {
-      debugPrint('⚠️ MCU BLE: BleService reports device $_connectedDeviceId disconnected. Cleaning up.');
-      disconnect();
-    }
-
-    // If we are NOT subscribed but BleService has a connection, try to subscribe
-    // We assume the first connected device is the one we want (single device support for now)
-    if (!_isSubscribed && connectedIds.isNotEmpty) {
-      final deviceId = connectedIds.first;
-      // Avoid re-subscribing if we are already trying or just disconnected explicitly?
-      // For now, auto-subscribe logic:
-      if (_connectedDeviceId != deviceId) {
-         subscribeToDevice(deviceId);
-      } else if (!_isSubscribed) {
-         // Retry subscription if ID matches but not subscribed?
-         // Be careful not to create a loop. subscribeToDevice checks _isSubscribed.
-         subscribeToDevice(deviceId);
-      }
-    }
-  }
-
-  /// Subscribe to an already-connected device for data streaming
-  /// This assumes BleService has already established the connection
-  Future<bool> subscribeToDevice(String deviceId) async {
-    try {
-      // Check if already subscribed to this device
-      if (_connectedDeviceId == deviceId && _isSubscribed) {
-        // Ensure data processor is running
-        if (_processingTimer == null || !_processingTimer!.isActive) {
-          _startDataProcessor();
-        }
-        return true;
-      }
-
-      debugPrint('🔵 MCU BLE: Subscribing to device $deviceId...');
-      _connectedDeviceId = deviceId;
-
-      // Request higher MTU for throughput
-      try {
-        debugPrint('🔵 MCU BLE: Requesting MTU 512...');
-        await _ble.requestMtu(deviceId: deviceId, mtu: 512);
-        debugPrint('✅ MCU BLE: MTU request sent');
-      } catch (e) {
-        debugPrint('⚠️ MCU BLE: MTU request failed (ignoring): $e');
-      }
-      
-      // Subscribe to data characteristic
-      final success = await subscribeToData();
-      
-      if (success) {
-        _isConnected = true;
-      } else {
-        _isConnected = false;
-        _connectedDeviceId = null; 
-      }
-      notifyListeners();
-      return success;
-    } catch (e, stackTrace) {
-      debugPrint('❌ MCU BLE: Subscribe error: $e');
-      debugPrint('Stack trace: $stackTrace');
-      _isConnected = false;
-      _connectedDeviceId = null;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Subscribe to IMU characteristic notifications
-  Future<bool> subscribeToData() async {
-    if (_connectedDeviceId == null) {
-      debugPrint('❌ MCU BLE: No device ID set, cannot subscribe');
-      return false;
-    }
-
-    try {
-      debugPrint('🔔 MCU BLE: Starting subscription to IMU characteristic...');
-
-      final characteristic = QualifiedCharacteristic(
-        serviceId: serviceUuid,
-        characteristicId: imuCharUuid,
-        deviceId: _connectedDeviceId!,
-      );
-
-      // Subscribe using flutter_reactive_ble
-      _characteristicSubscription = _ble
-          .subscribeToCharacteristic(characteristic)
-          .listen(
-            (data) {
-              if (data.isNotEmpty) {
-                 debugPrint('📦 BLE Packet: ${data.length} bytes'); 
-                 _dataQueue.add(data);
-                 if (_dataQueue.length > 200) {
-                   _dataQueue.removeAt(0);
-                 }
-              }
-            },
-            onError: (error) {
-              debugPrint('❌ MCU BLE: Subscription error: $error');
-              
-              // CRITICAL: Do not disconnect on Read errors (polling)
-              if (error.toString().contains('CHARACTERISTIC_READ')) {
-                 debugPrint('⚠️ MCU BLE: Ignoring Read error in subscription stream');
-                 return;
-              }
-
-              // If subscription errors, we are likely disconnected
-              disconnect();
-            },
-            onDone: () {
-               debugPrint('❌ MCU BLE: Subscription stream closed');
-               disconnect();
-            }
-          );
-
-      _isSubscribed = true;
-      debugPrint('✅ MCU BLE: Successfully subscribed to notifications');
-
-      // Start background data processor
-      _startDataProcessor();
-
-      // Start polling for stationary updates (every 3 seconds)
-      _startPolling();
-
-      // notifyListeners will be called by caller
-      return true;
-    } catch (e, stackTrace) {
-      debugPrint('❌ MCU BLE: Subscribe error: $e');
-      debugPrint('Stack trace: $stackTrace');
-      return false;
-    }
-  }
-
-  /// Start background worker to process queued data
-  void _startDataProcessor() {
-    _processingTimer?.cancel();
-    // Run at 5Hz (200ms) to process queued data without overwhelming the main thread
-    // Previously 30Hz (33ms) which caused ANR on home screen
-    _processingTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      _processQueuedData();
-    });
-    debugPrint('✅ Data processor started (5Hz)');
-  }
-  
-  /// Stop background worker
-  void _stopDataProcessor() {
-    _processingTimer?.cancel();
-    _processingTimer = null;
-    _pollingTimer?.cancel(); // Stop polling
-    _pollingTimer = null;
-    _dataQueue.clear();
-    debugPrint('✅ Data processor stopped');
-  }
-
-  /// Start polling data when stationary
-  void _startPolling() {
-    _pollingTimer?.cancel();
-    _consecutiveReadErrors = 0; // Reset errors
-    // Check every 5 seconds if we need to poll
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      // SMART POLLING: Only read if we haven't received data recently
-      // This prevents conflicts between notifications and read requests
-      final now = DateTime.now();
-      if (_lastPacketTime == null || now.difference(_lastPacketTime!).inSeconds >= 5) {
-        debugPrint('🔍 MCU BLE: No data for 5s, polling...');
-        readData();
-      }
-    });
-    debugPrint('✅ Smart polling started (5s check)'); 
-  }
-
-  int _consecutiveReadErrors = 0;
-
-  /// Explicitly read data from the characteristic (for stationary updates)
-  Future<void> readData() async {
-    if (!_isConnected || _connectedDeviceId == null) return;
-    try {
-      final characteristic = QualifiedCharacteristic(
-        serviceId: serviceUuid,
-        characteristicId: imuCharUuid,
-        deviceId: _connectedDeviceId!,
-      );
-      final response = await _ble.readCharacteristic(characteristic);
-      if (response.isNotEmpty) {
-        _consecutiveReadErrors = 0; // Success
-        // Parse as single packet
-        final now = DateTime.now();
-        final samples = _parseMcuPacket(response, now);
-        if (samples.isNotEmpty) {
-          _currentData = samples.last;
-          _lastPacketTime = now; // Update timestamp for smart polling
-          _temp = _currentData!.temperature;
-          // Battery is updated inside parse
-          // Notify listeners immediately for polled data
-          notifyListeners();
-        }
-      }
-    } catch (e) {
-      _consecutiveReadErrors++;
-      debugPrint('⚠️ MCU BLE: Read error: $e');
-      
-      if (_consecutiveReadErrors >= 3) {
-        debugPrint('❌ MCU BLE: Too many read errors ($e), stopping polling to prevent instability.');
-        _pollingTimer?.cancel();
-        _pollingTimer = null;
-      }
-    }
-  }
-
-  /// Process data from the queue in batches
-  void _processQueuedData() {
-    if (_dataQueue.isEmpty) {
-       // Log occasionally to confirm processor is alive
-       if (_processingTimer != null && _processingTimer!.tick % 50 == 0) {
-          debugPrint('⏳ BLE Queue Empty');
-       }
-       return;
-    }
-
-    final batch = <McuSensorData>[];
-    final now = DateTime.now();
-    int processedCount = 0;
-    int processedBytes = 0;
-
-    while (_dataQueue.isNotEmpty && processedCount < 50) {
-      final data = _dataQueue.removeAt(0);
-      processedBytes += data.length;
-      
-      final parsedSamples = _parseMcuPacket(data, now);
-      if (parsedSamples.isNotEmpty) {
-        batch.addAll(parsedSamples);
-        _currentData = parsedSamples.last; 
-        _temp = parsedSamples.last.temperature;
-      }
-      processedCount++;
-    }
-
-    if (batch.isNotEmpty) {
-      _sensorBatchController.add(batch); 
-    }
-
-    // Update stats
-    _receivedPackets += processedCount;
-    _totalBytesReceived += processedBytes;
-    _lastPacketTime = now;
-
-    // Calculate packets per second and data rate
-    _packetsInLastSecond += processedCount;
-    if (now.difference(_lastSecondTimestamp).inSeconds >= 1) {
-      _currentPacketsPerSecond = _packetsInLastSecond /
-          now.difference(_lastSecondTimestamp).inSeconds;
-      _currentDataRate = _totalBytesReceived /
-          now.difference(_lastSecondTimestamp).inSeconds;
-      _packetsInLastSecond = 0;
-      _totalBytesReceived = 0;
-      _lastSecondTimestamp = now;
-    }
-
-    // Throttle UI updates to once per second
-    if (now.difference(_lastNotifyTime).inMilliseconds > 1000) {
-      _lastNotifyTime = now;
-      notifyListeners();
-    }
-  }
-
-  /// Parse a raw BLE packet into a list of McuSensorData (one per sample)
-  List<McuSensorData> _parseMcuPacket(List<int> data, DateTime packetTimestamp) {
-    if (data.length < 20) {
-      // debugPrint('⚠️ MCU BLE: Packet too short: ${data.length} bytes');
-      return [];
-    }
-
-    try {
-      _lastRawPacket = data;
-
-      final bytes = data is Uint8List ? data : Uint8List.fromList(data);
-      final byteData = ByteData.sublistView(bytes);
-      int offset = 0;
-
-      // 1. Battery (1 byte)
-      _batteryLevel = byteData.getUint8(offset);
-      offset += 1;
-
-      // 2. Temperature (2 bytes, int16, little-endian)
-      final tempRaw = byteData.getInt16(offset, Endian.little);
-      final temperature = tempRaw / 100.0;
-      offset += 2;
-
-      // 3. Timestamp (4 bytes)
-      offset += 4;
-
-      // 4. IMU Data
-      int remainingBytes = data.length - offset;
-      int sampleCount = remainingBytes ~/ 12; 
-      
-      if (sampleCount == 0) return [];
-
-      List<McuSensorData> samples = [];
-      const int sampleIntervalMs = 10; 
-
-      for (int i = 0; i < sampleCount; i++) {
-        final accelX = byteData.getInt16(offset, Endian.little) / 1000.0;
-        offset += 2;
-        final accelY = byteData.getInt16(offset, Endian.little) / 1000.0;
-        offset += 2;
-        final accelZ = byteData.getInt16(offset, Endian.little) / 1000.0;
-        offset += 2;
-
-        final gyroX = byteData.getInt16(offset, Endian.little) / 1000.0;
-        offset += 2;
-        final gyroY = byteData.getInt16(offset, Endian.little) / 1000.0;
-        offset += 2;
-        final gyroZ = byteData.getInt16(offset, Endian.little) / 1000.0;
-        offset += 2;
-
-        final sampleTime = packetTimestamp.subtract(
-          Duration(milliseconds: (sampleCount - 1 - i) * sampleIntervalMs)
-        );
-
-        samples.add(McuSensorData(
-          accelX: accelX,
-          accelY: accelY,
-          accelZ: accelZ,
-          gyroX: gyroX,
-          gyroY: gyroY,
-          gyroZ: gyroZ,
-          temperature: temperature,
-          timestamp: sampleTime,
-          rawData: (i == 0) ? data.map((e) => e.toRadixString(16).padLeft(2, '0')).join(' ') : null,
-        ));
-      }
-
-      // Log raw data occasionally
-      if (_rawDataLog.length >= 20) {
-        _rawDataLog.removeAt(0);
-      }
-      _rawDataLog.add(
-          '${packetTimestamp.toIso8601String()} - $sampleCount samples - ${data.map((e) => e.toRadixString(16).padLeft(2, '0')).join(' ')}');
-
-      return samples;
-    } catch (e, stackTrace) {
-      debugPrint('❌ MCU BLE: Error parsing packet: $e');
-      return [];
-    }
-  }
-
-  /// Disconnect from the device and stop all subscriptions/timers
-  Future<void> disconnect() async {
-    debugPrint('🔴 MCU BLE: Disconnecting...');
-    await _characteristicSubscription?.cancel();
-    _characteristicSubscription = null;
-    _stopDataProcessor();
-    _isConnected = false;
-    _isSubscribed = false;
-    _connectedDeviceId = null;
-    _currentData = null;
-    _receivedPackets = 0;
-    _lastPacketTime = null;
-    _lastRawPacket = null;
-    _packetsInLastSecond = 0;
-    _totalBytesReceived = 0;
-    _currentPacketsPerSecond = 0.0;
-    _currentDataRate = 0.0;
-    notifyListeners();
-    debugPrint('🔴 MCU BLE: Disconnected.');
-  }
-
-  void clearLog() {
-    _rawDataLog.clear();
-    notifyListeners();
+    _onBleServiceChanged(); // Process current state on creation
   }
 
   @override
   void dispose() {
     _bleService.removeListener(_onBleServiceChanged);
-    _characteristicSubscription?.cancel();
-    _stopDataProcessor();
-    _sensorBatchController.close();
+    for (final sub in _charSubs.values) {
+      sub.cancel();
+    }
+    _charSubs.clear();
+    _stopProcessor();
+    _batchController.close();
     super.dispose();
+  }
+
+  // ── BleService observer ──────────────────────────────────────────────────
+
+  void _onBleServiceChanged() {
+    final connected = _bleService.connectedDeviceIds;
+
+    // Pause subscriptions for devices that have disconnected
+    final toRemove = _charSubs.keys
+        .where((id) => !connected.contains(id))
+        .toList();
+    for (final id in toRemove) {
+      debugPrint('⚠️ MCU: BleService reports $id disconnected — pausing data sub');
+      _pauseDataSubscription(id);
+    }
+
+    // Subscribe to newly connected devices not yet subscribed
+    for (final id in connected) {
+      if (!_charSubs.containsKey(id) && _subscribing[id] != true) {
+        subscribeToDevice(id);
+      }
+    }
+  }
+
+  /// Pause only the data subscription for [deviceId].
+  /// Keeps state for other devices intact.
+  void _pauseDataSubscription(String deviceId) {
+    _charSubs[deviceId]?.cancel();
+    _charSubs.remove(deviceId);
+    _subscribing.remove(deviceId);
+
+    if (_charSubs.isEmpty) {
+      _stopProcessor();
+    }
+
+    notifyListeners();
+
+    // If BleService still reports the device as connected (e.g. characteristic
+    // stream closed but GATT link is alive), schedule an immediate resubscribe
+    // so data resumes without waiting for a disconnect/reconnect cycle.
+    if (_bleService.connectedDeviceIds.contains(deviceId)) {
+      Future.delayed(const Duration(milliseconds: 2000), () {
+        if (_subscribing[deviceId] != true &&
+            !_charSubs.containsKey(deviceId) &&
+            _bleService.connectedDeviceIds.contains(deviceId)) {
+          debugPrint('🔄 MCU: Resubscribing after characteristic drop on $deviceId');
+          subscribeToDevice(deviceId);
+        }
+      });
+    }
+  }
+
+  // ── Subscription ─────────────────────────────────────────────────────────
+
+  /// Subscribe to the IMU characteristic of an already-connected device.
+  /// Safe to call for multiple devices simultaneously.
+  Future<bool> subscribeToDevice(String deviceId) async {
+    if (_subscribing[deviceId] == true) {
+      debugPrint('⚠️ MCU: subscribeToDevice already in progress for $deviceId');
+      return false;
+    }
+    // Already subscribed to this exact device
+    if (_charSubs.containsKey(deviceId)) {
+      if (_processorTimer == null || !_processorTimer!.isActive) {
+        _startProcessor();
+      }
+      return true;
+    }
+
+    _subscribing[deviceId] = true;
+    debugPrint('🔵 MCU: Subscribing to $deviceId…');
+
+    try {
+      // Request higher MTU — best-effort
+      try {
+        await _ble.requestMtu(deviceId: deviceId, mtu: 512);
+        debugPrint('✅ MCU: MTU negotiated for $deviceId');
+      } catch (_) {
+        debugPrint('⚠️ MCU: MTU negotiation failed for $deviceId — continuing with default');
+      }
+
+      // Wait for GATT service discovery to settle post-connection.
+      // Android needs 500ms+ after connected before GATT ops are reliable.
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      // Discover the notifiable characteristic dynamically
+      final characteristic = await _discoverNotifiableCharacteristic(deviceId);
+
+      // Extra delay after discovery before subscribing — prevents silent
+      // notification-enable failure on Android when GATT is still stabilising.
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (characteristic == null) {
+        debugPrint('❌ MCU: No notifiable characteristic found for $deviceId — aborting');
+        _subscribing.remove(deviceId);
+        notifyListeners();
+        return false;
+      }
+
+      final sub = _ble.subscribeToCharacteristic(characteristic).listen(
+        (data) {
+          if (data.isNotEmpty) {
+            _queue.add(data);
+            // Cap queue to prevent unbounded growth (oldest discarded)
+            if (_queue.length > 200) _queue.removeAt(0);
+          }
+        },
+        onError: (Object error) {
+          debugPrint('❌ MCU: Characteristic error on $deviceId: $error');
+          _pauseDataSubscription(deviceId);
+        },
+        onDone: () {
+          debugPrint('⚠️ MCU: Characteristic stream closed for $deviceId');
+          _pauseDataSubscription(deviceId);
+        },
+      );
+
+      _charSubs[deviceId] = sub;
+      _subscribing.remove(deviceId);
+
+      _startProcessor();
+
+      debugPrint('✅ MCU: Subscribed to ${characteristic.characteristicId} on $deviceId');
+      notifyListeners();
+      return true;
+    } catch (e, st) {
+      debugPrint('❌ MCU: subscribeToDevice error for $deviceId: $e\n$st');
+      _subscribing.remove(deviceId);
+      notifyListeners();
+      // Retry after 2 s if the GATT connection is still alive
+      Future.delayed(const Duration(seconds: 2), () {
+        if (_subscribing[deviceId] != true &&
+            !_charSubs.containsKey(deviceId) &&
+            _bleService.connectedDeviceIds.contains(deviceId)) {
+          debugPrint('🔄 MCU: Retrying subscribe after error on $deviceId');
+          subscribeToDevice(deviceId);
+        }
+      });
+      return false;
+    }
+  }
+
+  // ── Service discovery ────────────────────────────────────────────────────
+
+  Future<QualifiedCharacteristic?> _discoverNotifiableCharacteristic(
+      String deviceId) async {
+    try {
+      debugPrint('🔍 MCU: Discovering services on $deviceId…');
+      await _ble.discoverAllServices(deviceId);
+      final services = await _ble.getDiscoveredServices(deviceId);
+
+      final targetServiceId = Uuid.parse(kMcuServiceUuid);
+      final targetCharId = Uuid.parse(kMcuCharUuid);
+
+      // First pass: match known UUID exactly
+      for (final service in services) {
+        if (service.id == targetServiceId) {
+          for (final char in service.characteristics) {
+            if (char.id == targetCharId && char.isNotifiable) {
+              debugPrint('  ✅ MCU: Found known char $kMcuCharUuid');
+              return QualifiedCharacteristic(
+                serviceId: service.id,
+                characteristicId: char.id,
+                deviceId: deviceId,
+              );
+            }
+          }
+        }
+      }
+
+      // Second pass: any notifiable char in the known service
+      for (final service in services) {
+        if (service.id == targetServiceId) {
+          for (final char in service.characteristics) {
+            if (char.isNotifiable) {
+              debugPrint('  ⚠️ MCU: Char UUID mismatch — using first notifiable in known service: ${char.id}');
+              return QualifiedCharacteristic(
+                serviceId: service.id,
+                characteristicId: char.id,
+                deviceId: deviceId,
+              );
+            }
+          }
+        }
+      }
+
+      // Last resort: hardcoded UUIDs
+      debugPrint('⚠️ MCU: Known service not in discovery results — using hardcoded UUIDs');
+      return QualifiedCharacteristic(
+        serviceId: targetServiceId,
+        characteristicId: targetCharId,
+        deviceId: deviceId,
+      );
+    } catch (e) {
+      debugPrint('❌ MCU: Service discovery error: $e — falling back to known UUIDs');
+      return QualifiedCharacteristic(
+        serviceId: Uuid.parse(kMcuServiceUuid),
+        characteristicId: Uuid.parse(kMcuCharUuid),
+        deviceId: deviceId,
+      );
+    }
+  }
+
+  // ── Data processor (5 Hz) ────────────────────────────────────────────────
+
+  void _startProcessor() {
+    if (_processorTimer?.isActive == true) return;
+    _processorTimer?.cancel();
+    // 5 Hz is smooth enough for UI updates and avoids ANR from main-thread load
+    _processorTimer =
+        Timer.periodic(const Duration(milliseconds: 200), (_) => _drain());
+  }
+
+  void _stopProcessor() {
+    _processorTimer?.cancel();
+    _processorTimer = null;
+    _queue.clear();
+  }
+
+  void _drain() {
+    if (_queue.isEmpty) return;
+
+    final batch = <McuSensorData>[];
+    final now = DateTime.now();
+    int bytes = 0;
+    int count = 0;
+
+    while (_queue.isNotEmpty && count < 50) {
+      final raw = _queue.removeAt(0);
+      bytes += raw.length;
+      count++;
+      final samples = _parseMcuPacket(raw, now);
+      if (samples.isNotEmpty) {
+        batch.addAll(samples);
+        _currentData = samples.last;
+        _temp = samples.last.temperature;
+      }
+    }
+
+    if (batch.isNotEmpty) {
+      _batchController.add(batch);
+    }
+
+    // Update stats
+    _receivedPackets += count;
+    _packetsThisSecond += count;
+    _bytesThisSecond += bytes;
+    _lastPacketTime = now;
+
+    final elapsed = now.difference(_statWindowStart).inMilliseconds;
+    if (elapsed >= 1000) {
+      _packetsPerSecond = _packetsThisSecond / (elapsed / 1000.0);
+      _dataRateBytesPerSec = _bytesThisSecond / (elapsed / 1000.0);
+      _packetsThisSecond = 0;
+      _bytesThisSecond = 0;
+      _statWindowStart = now;
+    }
+
+    // Throttle UI rebuilds to 10 Hz
+    if (now.difference(_lastNotify).inMilliseconds >= 100) {
+      _lastNotify = now;
+      notifyListeners();
+    }
+  }
+
+  // ── Packet parsing ───────────────────────────────────────────────────────
+
+  List<McuSensorData> _parseMcuPacket(List<int> data, DateTime ts) {
+    if (data.length < 20) return [];
+
+    try {
+      _lastRawPacket = data;
+      final bytes = data is Uint8List ? data : Uint8List.fromList(data);
+      final bd = ByteData.sublistView(bytes);
+      int offset = 0;
+
+      // ── Header ──────────────────────────────────────────────────────────
+      // ESP32 firmware (current, 129 bytes):
+      //   struct BlePacket {
+      //     uint8_t  battery;       [0]     1 byte
+      //     int16_t  temperature;   [1-2]   2 bytes  (×100 → °C)
+      //     uint32_t timestamp;     [3-6]   4 bytes
+      //     uint16_t bite_count;    [7-8]   2 bytes
+      //     ImuSample samples[10];  [9-128] 120 bytes  (int16×6 each)
+      //   }  Total = 129 bytes
+      //
+      // Legacy firmware (127 bytes, no bite count):
+      //   [0]   battery  uint8
+      //   [1-2] temp     int16 LE
+      //   [3-6] ts       uint32 LE
+      //   [7-126] 10×IMU
+      //
+      // Old firmware (132 bytes, explicit padding):
+      //   [0]   battery  uint8
+      //   [1]   _pad1
+      //   [2-3] temp     int16 LE
+      //   [4-7] ts       uint32 LE
+      //   [8-9] bites    uint16 LE
+      //   [10-11] _pad2
+      //   [12-131] 10×IMU
+
+      _batteryLevel = bd.getUint8(0);
+
+      if (data.length == 129) {
+        // Current ESP32 firmware — packed struct, no padding
+        final tempRaw = bd.getInt16(1, Endian.little);
+        _temp = tempRaw / 100.0;
+        // skip timestamp [3-6]
+        final newBiteCount = bd.getUint16(7, Endian.little);
+        if (newBiteCount != _hardwareBiteCount) {
+          _hardwareBiteCount = newBiteCount;
+          debugPrint('🍴 MCU: Bite count → $_hardwareBiteCount');
+        }
+        offset = 9; // IMU samples start at byte 9
+      } else if (data.length == 132) {
+        // Old firmware — padded struct
+        final tempRaw = bd.getInt16(2, Endian.little);
+        _temp = tempRaw / 100.0;
+        final newBiteCount = bd.getUint16(8, Endian.little);
+        if (newBiteCount != _hardwareBiteCount) {
+          _hardwareBiteCount = newBiteCount;
+          debugPrint('🍴 MCU: Bite count → $_hardwareBiteCount');
+        }
+        offset = 12;
+      } else {
+        // Legacy firmware — no bite count
+        final tempRaw = bd.getInt16(1, Endian.little);
+        _temp = tempRaw / 100.0;
+        offset = 7;
+      }
+
+      // ── IMU Samples ──────────────────────────────────────────────────────
+      final remaining = data.length - offset;
+      final sampleCount = remaining ~/ 12;
+      if (sampleCount == 0) return [];
+
+      const int sampleIntervalMs = 10; // 100 Hz firmware sample rate
+      final samples = <McuSensorData>[];
+
+      for (int i = 0; i < sampleCount; i++) {
+        // Accel: firmware sends (accX * 1000) as milli-g → divide by 1000 to get g
+        final ax = bd.getInt16(offset, Endian.little) / 1000.0; offset += 2;
+        final ay = bd.getInt16(offset, Endian.little) / 1000.0; offset += 2;
+        final az = bd.getInt16(offset, Endian.little) / 1000.0; offset += 2;
+        // Gyro: firmware sends (gyrX * 100) as 0.01 dps units → divide by 100 to get dps
+        final gx = bd.getInt16(offset, Endian.little) / 100.0; offset += 2;
+        final gy = bd.getInt16(offset, Endian.little) / 100.0; offset += 2;
+        final gz = bd.getInt16(offset, Endian.little) / 100.0; offset += 2;
+
+        // Back-date each sample so they're evenly spaced before `ts`
+        final sampleTs = ts.subtract(
+            Duration(milliseconds: (sampleCount - 1 - i) * sampleIntervalMs));
+
+        samples.add(McuSensorData(
+          accelX: ax,
+          accelY: ay,
+          accelZ: az,
+          gyroX: gx,
+          gyroY: gy,
+          gyroZ: gz,
+          temperature: _temp,
+          timestamp: sampleTs,
+        ));
+      }
+
+      // Append to raw log (capped at 20 entries)
+      if (_rawLog.length >= 20) _rawLog.removeAt(0);
+      _rawLog.add(
+          '${ts.toIso8601String()} — $sampleCount samples — '
+          '${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+
+      return samples;
+    } catch (e, st) {
+      debugPrint('❌ MCU: Parse error: $e\n$st');
+      return [];
+    }
+  }
+
+  // ── Heater control ───────────────────────────────────────────────────────
+
+  /// Send a heater command to the MCU via the NRF write characteristic.
+  /// Sends to all connected devices.
+  Future<bool> setHeaterParameters(int targetTemp, int maxTemp) async {
+    if (_charSubs.isEmpty) {
+      debugPrint('❌ MCU: Cannot set heater — not connected');
+      return false;
+    }
+    // Safety: reject out-of-range temperatures before sending to hardware
+    if (targetTemp > 0 && (targetTemp < 30 || targetTemp > 95)) {
+      debugPrint('❌ MCU: Heater targetTemp $targetTemp out of safe range (30–95°C)');
+      return false;
+    }
+    final payload = targetTemp > 0 ? 'ON $targetTemp' : 'OFF';
+    debugPrint('🔥 MCU: Heater → "$payload" (${_charSubs.length} device(s))');
+
+    bool anySuccess = false;
+    for (final deviceId in _charSubs.keys) {
+      try {
+        final char = QualifiedCharacteristic(
+          serviceId: Uuid.parse(kMcuServiceUuid),
+          characteristicId: Uuid.parse(kMcuCharUuid),
+          deviceId: deviceId,
+        );
+        await _ble.writeCharacteristicWithResponse(
+            char, value: payload.codeUnits);
+        anySuccess = true;
+      } catch (e) {
+        debugPrint('❌ MCU: Heater write failed on $deviceId: $e');
+      }
+    }
+    return anySuccess;
+  }
+
+  // ── Explicit disconnect ──────────────────────────────────────────────────
+
+  /// Disconnect all devices and clear all state.
+  Future<void> disconnect() async {
+    debugPrint('🔴 MCU: Disconnect all (${_charSubs.length} device(s))');
+    for (final sub in _charSubs.values) {
+      sub.cancel();
+    }
+    _charSubs.clear();
+    _subscribing.clear();
+    _stopProcessor();
+    _currentData = null;
+    _lastRawPacket = null;
+    _lastPacketTime = null;
+    _receivedPackets = 0;
+    _packetsPerSecond = 0.0;
+    _dataRateBytesPerSec = 0.0;
+    _hardwareBiteCount = 0;
+    notifyListeners();
+  }
+
+  /// Disconnect a specific device only.
+  Future<void> disconnectDevice(String deviceId) async {
+    debugPrint('🔴 MCU: Disconnect $deviceId');
+    _charSubs[deviceId]?.cancel();
+    _charSubs.remove(deviceId);
+    _subscribing.remove(deviceId);
+    if (_charSubs.isEmpty) {
+      _stopProcessor();
+    }
+    notifyListeners();
+  }
+
+  void clearLog() {
+    _rawLog.clear();
+    notifyListeners();
   }
 }

@@ -10,7 +10,6 @@ export 'domain/insights_repository.dart';
 
 // Infrastructure layer
 export 'infrastructure/live_insights_repository.dart';
-export 'infrastructure/mock_insights_repository.dart';
 
 // Application layer
 export 'application/insights_controller.dart';
@@ -32,6 +31,7 @@ export 'presentation/widgets/summary_cards.dart';
 export 'presentation/widgets/temperature_section.dart';
 export 'presentation/widgets/tremor_charts.dart';
 export 'presentation/widgets/trend_analytics.dart';
+export 'presentation/widgets/tremor_breakdown_chart.dart';
 
 // Analytics redesign
 export 'presentation/theme/wellness_colors.dart';

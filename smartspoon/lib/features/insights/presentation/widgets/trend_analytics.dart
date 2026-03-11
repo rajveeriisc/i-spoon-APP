@@ -104,7 +104,7 @@ class _TrendAnalyticsState extends State<TrendAnalytics>
                 ),
                 child: const Icon(
                   Icons.trending_up_rounded,
-                  color: Colors.white,
+                  color: const Color(0xFF0F172A),
                   size: 20,
                 ),
               ),
@@ -350,7 +350,7 @@ class _TrendCard<T extends num> extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: color,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -467,7 +467,7 @@ class _TrendCard<T extends num> extends StatelessWidget {
                       getDotPainter: (spot, percent, barData, index) =>
                           FlDotCirclePainter(
                         radius: 4,
-                        color: Colors.white,
+                        color: const Color(0xFF0F172A),
                         strokeWidth: 2,
                         strokeColor: color,
                       ),

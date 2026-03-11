@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:smartspoon/core/config/app_config.dart';
 import '../../auth/domain/services/auth_service.dart';
 import '../domain/models/notification_models.dart';
 import '../domain/services/notification_service.dart';
@@ -18,10 +19,7 @@ class NotificationProvider with ChangeNotifier {
   int get unreadCount =>
       _notifications.where((n) => n.isUnread).length;
 
-  final String _baseUrl = const String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:5000',
-  );
+  final String _baseUrl = AppConfig.apiBaseUrl;
 
   /// Initialize notification provider
   Future<void> initialize() async {
@@ -46,7 +44,7 @@ class NotificationProvider with ChangeNotifier {
       }
 
       final response = await http.get(
-        Uri.parse('$_baseUrl/api/notifications/preferences'),
+        Uri.parse('$_baseUrl/notifications/preferences'),
         headers: {'Authorization': 'Bearer $authToken'},
       );
 
@@ -77,7 +75,7 @@ class NotificationProvider with ChangeNotifier {
       if (authToken == null) return false;
 
       final response = await http.put(
-        Uri.parse('$_baseUrl/api/notifications/preferences'),
+        Uri.parse('$_baseUrl/notifications/preferences'),
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
@@ -124,7 +122,7 @@ class NotificationProvider with ChangeNotifier {
 
       final response = await http.get(
         Uri.parse(
-            '$_baseUrl/api/notifications/history?limit=$limit&offset=$offset'),
+            '$_baseUrl/notifications/history?limit=$limit&offset=$offset'),
         headers: {'Authorization': 'Bearer $authToken'},
       );
 

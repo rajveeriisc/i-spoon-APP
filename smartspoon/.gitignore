@@ -43,3 +43,17 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets & sensitive config — NEVER commit these
+# NOTE: GoogleService-Info.plist, google-services.json and firebase_options.dart
+# are required for builds but contain API keys. Keep them out of public repos.
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+# firebase_options.dart is auto-generated — regenerate per environment
+# lib/firebase_options.dart
+
+# Environment & keys
+*.env
+*.pem
+*.key
+*.p12

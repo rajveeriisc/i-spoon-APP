@@ -46,12 +46,12 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDQDwli8TZhYg1yV0BAxfaPoA9sxkAtDQw',
-    appId: '1:129116938699:ios:PLACEHOLDER',
+    apiKey: 'AIzaSyD-HMf9KZuO1aowSFZGS1uD1rfdSbfJTPE',
+    appId: '1:129116938699:ios:e4473d913c0cd9624e564e',
     messagingSenderId: '129116938699',
     projectId: 'i-spoon-auth',
-    storageBucket: 'i-spoon-auth.appspot.com',
-    iosBundleId: 'com.example.smartspoon',
+    storageBucket: 'i-spoon-auth.firebasestorage.app',
+    iosBundleId: 'ispoon',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(

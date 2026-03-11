@@ -3,9 +3,10 @@ import multer from "multer";
 import sharp from "sharp";
 import path from "path";
 import fs from "fs";
-import { getMe, updateMe, uploadAvatar, removeAvatar } from "../controllers/userController.js";
+import userController from "../controllers/userController.js";
 import { protect } from "../middleware/authMiddleware.js";
-import { validateUpdateMe } from "../middleware/validation.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { updateProfileSchema } from "../validators/user.schema.js";
 
 const router = express.Router();
 
@@ -54,9 +55,9 @@ const optimizeImage = async (req, res, next) => {
 };
 
 // All routes require authentication
-router.get("/me", protect, getMe);
-router.put("/me", protect, validateUpdateMe, updateMe);
-router.post("/me/avatar", protect, upload.single("avatar"), optimizeImage, uploadAvatar);
-router.delete("/me/avatar", protect, removeAvatar);
+router.get("/me", protect, userController.getMe);
+router.put("/me", protect, validateRequest(updateProfileSchema), userController.updateMe);
+router.post("/me/avatar", protect, upload.single("avatar"), optimizeImage, userController.uploadAvatar);
+router.delete("/me/avatar", protect, userController.removeAvatar);
 
 export default router;

@@ -1,12 +1,15 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/premium_widgets.dart';
 import '../../domain/models.dart';
-import 'dart:math';
+import '../screens/meals_analysis_page.dart';
+import 'dart:math' show max;
 
 class DailyFoodTimeline extends StatefulWidget {
-  const DailyFoodTimeline({super.key, required this.events});
-  final List<BiteEvent> events;
+  const DailyFoodTimeline({super.key, required this.summaries});
+  final List<DailyBiteSummary> summaries;
 
   @override
   State<DailyFoodTimeline> createState() => _DailyFoodTimelineState();
@@ -16,6 +19,8 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   int _selectedIndex = -1;
+  // Fixed to 7 days for Weekly History
+  final int _rangeDays = 7;
 
   @override
   void initState() {
@@ -24,13 +29,6 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..forward();
-    
-    // Set initial selection to last day after frame build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() {
-         // This will be effectively set in build method logic if -1
-      });
-    });
   }
 
   @override
@@ -41,80 +39,49 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // Aggregate events into bites and time (minutes) per day for last 7 days
     final now = DateTime.now();
-    final start = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(const Duration(days: 6));
+    final today = DateTime(now.year, now.month, now.day);
+
+    // Build day-keyed buckets for selected range (7 / 30 / 90 days)
     final biteBuckets = <DateTime, int>{};
     final timeBuckets = <DateTime, double>{};
-    for (var i = 0; i < 7; i++) {
-      final d = DateTime(start.year, start.month, start.day + i);
+    for (var i = _rangeDays - 1; i >= 0; i--) {
+      final d = today.subtract(Duration(days: i));
       biteBuckets[d] = 0;
-      timeBuckets[d] = 0;
+      timeBuckets[d] = 0.0;
     }
-    for (final e in widget.events) {
-      if (!e.timestamp.isBefore(start)) {
-        final d = DateTime(
-          e.timestamp.year,
-          e.timestamp.month,
-          e.timestamp.day,
-        );
-        if (biteBuckets.containsKey(d)) {
-          biteBuckets[d] = (biteBuckets[d] ?? 0) + 1;
-        }
-      }
-    }
-    biteBuckets.forEach((d, count) {
-      if (timeBuckets.containsKey(d)) {
-        timeBuckets[d] = count * 0.3; // approx minutes, 18s per bite
-      }
-    });
 
-    // Fill empty days with demo values so all 7 days render nicely
-    final rnd = Random(2025);
-    for (final d in biteBuckets.keys) {
-      if ((biteBuckets[d] ?? 0) == 0) {
-        biteBuckets[d] = 8 + rnd.nextInt(25); // 8..32 bites
-      }
-      if ((timeBuckets[d] ?? 0) == 0) {
-        final est = (biteBuckets[d]! * 0.28) + rnd.nextDouble() * 6; // ~minutes
-        timeBuckets[d] = est.clamp(8, 60);
+    // Fill from daily_summaries (authoritative source)
+    for (final s in widget.summaries) {
+      final d = DateTime(s.date.year, s.date.month, s.date.day);
+      if (biteBuckets.containsKey(d)) {
+        biteBuckets[d] = (biteBuckets[d] ?? 0) + s.totalBites;
+        timeBuckets[d] = (timeBuckets[d] ?? 0) + s.totalDurationMin;
       }
     }
 
     final keys = biteBuckets.keys.toList()..sort();
-    
-    // Set default selection if not set
     if (_selectedIndex == -1 && keys.isNotEmpty) {
       _selectedIndex = keys.length - 1;
     }
 
-    double minutesMax = 0;
-    double bitesMax = 0;
-    for (final d in keys) {
-      minutesMax = max(minutesMax, (timeBuckets[d] ?? 0).toDouble());
-      bitesMax = max(bitesMax, (biteBuckets[d] ?? 0).toDouble());
-    }
+    double minutesMax =
+        timeBuckets.values.fold(0.0, (a, b) => a > b ? a : b.toDouble());
+    double bitesMax =
+        biteBuckets.values.fold(0.0, (a, b) => a > b ? a : b.toDouble());
     if (minutesMax <= 0) minutesMax = 10;
     if (bitesMax <= 0) bitesMax = 10;
     final minutesNiceMax = (minutesMax / 10).ceil() * 10;
-    final bitesNiceMax = max(5, (bitesMax / 5).ceil() * 5);
-    final scaleFactor =
-        minutesNiceMax / bitesNiceMax; // map bites to minutes scale
+    final bitesNiceMax = (bitesMax / 5).ceil() * 5;
+    final scaleFactor = minutesNiceMax / bitesNiceMax.clamp(1, 99999);
 
     final timeSpots = <FlSpot>[];
     final biteSpotsScaled = <FlSpot>[];
     for (var i = 0; i < keys.length; i++) {
       final d = keys[i];
-      final minutes = (timeBuckets[d] ?? 0).toDouble();
-      final bites = (biteBuckets[d] ?? 0).toDouble();
-      timeSpots.add(FlSpot(i.toDouble(), minutes));
-      biteSpotsScaled.add(FlSpot(i.toDouble(), bites * scaleFactor));
+      timeSpots.add(FlSpot(i.toDouble(), (timeBuckets[d] ?? 0).toDouble()));
+      biteSpotsScaled.add(
+          FlSpot(i.toDouble(), (biteBuckets[d] ?? 0) * scaleFactor));
     }
 
     String dayLabel(DateTime d) {
@@ -127,25 +94,10 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
       return '${dayLabel(d)}, ${d.day} ${months[d.month - 1]}';
     }
 
-    // Compute nicer Y axes
     final interval = max(2, (minutesNiceMax / 5).round());
 
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? const Color(0xFF2C3E50) : const Color(0xFFE2E8F0),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    // Use PremiumGlassCard instead of generic Container
+    return PremiumGlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -157,21 +109,54 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                 children: [
                   Text(
                     'Weekly History',
-                    style: GoogleFonts.outfit(
+                    style: GoogleFonts.manrope(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : const Color(0xFF2D3748),
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 8),
                   Row(
-                    children: const [
-                      _LegendDot(color: Color(0xFF4A90E2), label: 'Time (min)'),
-                      SizedBox(width: 12),
-                      _LegendDot(color: Color(0xFFFFB74D), label: 'Bites'),
+                    children: [
+                      _LegendDot(color: AppTheme.emerald, label: 'Time (min)'),
+                      const SizedBox(width: 12),
+                      _LegendDot(color: AppTheme.amber, label: 'Bites'),
                     ],
                   ),
                 ],
+              ),
+              // History button mapping to MealsAnalysisPage
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MealsAnalysisPage(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.emerald.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.emerald.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 16, color: AppTheme.emerald),
+                      const SizedBox(width: 6),
+                      Text(
+                        'History',
+                        style: GoogleFonts.manrope(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.emerald,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -194,9 +179,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                       drawVerticalLine: false,
                       horizontalInterval: interval.toDouble(),
                       getDrawingHorizontalLine: (value) => FlLine(
-                        color: isDark
-                            ? Colors.grey.withValues(alpha: 0.1)
-                            : Colors.grey.withValues(alpha: 0.1),
+                        color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
                         strokeWidth: 1,
                         dashArray: [5, 5],
                       ),
@@ -221,21 +204,36 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                             if (idx < 0 || idx >= keys.length) {
                               return const SizedBox.shrink();
                             }
+                            // For 30/90 day ranges, only label every 7th point
+                            final labelStep = _rangeDays <= 7 ? 1 : 7;
+                            if (idx % labelStep != 0 && idx != keys.length - 1) {
+                              return const SizedBox.shrink();
+                            }
                             final isSelected = _selectedIndex == idx;
+                            final d = keys[idx];
+                            final label = _rangeDays <= 7
+                                ? dayLabel(d)
+                                : '${d.day}/${d.month}';
                             return Padding(
                               padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                dayLabel(keys[idx]),
-                                style: GoogleFonts.outfit(
-                                  fontSize: 12,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.w500,
-                                  color: isSelected
-                                      ? const Color(0xFF4A90E2)
-                                      : (isDark
-                                          ? Colors.grey[400]
-                                          : Colors.grey[500]),
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  setState(() {
+                                    _selectedIndex = idx;
+                                  });
+                                },
+                                child: Text(
+                                  label,
+                                  style: GoogleFonts.manrope(
+                                    fontSize: _rangeDays <= 7 ? 12 : 10,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.w500,
+                                    color: isSelected
+                                        ? AppTheme.emerald
+                                        : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                                  ),
                                 ),
                               ),
                             );
@@ -247,7 +245,8 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                       enabled: true,
                       handleBuiltInTouches: true,
                       touchTooltipData: LineTouchTooltipData(
-                        getTooltipItems: (spots) => spots.map((e) => null).toList(), // Disable built-in tooltip
+
+                        getTooltipItems: (spots) => spots.map((e) => null).toList(), // Disable built-in description in tooltip, just show dot
                       ),
                       touchCallback: (event, response) {
                         if (response?.lineBarSpots != null &&
@@ -261,14 +260,14 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                       getTouchedSpotIndicator: (LineChartBarData barData, List<int> spotIndexes) {
                         return spotIndexes.map((spotIndex) {
                           return TouchedSpotIndicatorData(
-                            FlLine(color: const Color(0xFF4A90E2), strokeWidth: 2, dashArray: [5, 5]),
+                            FlLine(color: AppTheme.emerald, strokeWidth: 2, dashArray: [5, 5]),
                             FlDotData(
                               getDotPainter: (spot, percent, barData, index) {
                                 return FlDotCirclePainter(
                                   radius: 6,
-                                  color: Colors.white,
+                                  color: Theme.of(context).colorScheme.surface,
                                   strokeWidth: 3,
-                                  strokeColor: barData.color ?? Colors.black,
+                                  strokeColor: barData.color ?? Theme.of(context).colorScheme.primary,
                                 );
                               },
                             ),
@@ -284,7 +283,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                             .toList(),
                         isCurved: true,
                         curveSmoothness: 0.35,
-                        color: const Color(0xFF4A90E2),
+                        color: AppTheme.emerald,
                         barWidth: 3,
                         isStrokeCapRound: true,
                         dotData: FlDotData(show: false),
@@ -292,8 +291,8 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                           show: true,
                           gradient: LinearGradient(
                             colors: [
-                              const Color(0xFF4A90E2).withValues(alpha: 0.2),
-                              const Color(0xFF4A90E2).withValues(alpha: 0.0),
+                              AppTheme.emerald.withValues(alpha: 0.2),
+                              AppTheme.emerald.withValues(alpha: 0.0),
                             ],
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
@@ -308,7 +307,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
                             .toList(),
                         isCurved: true,
                         curveSmoothness: 0.35,
-                        color: const Color(0xFFFFB74D),
+                        color: AppTheme.amber, // Gold
                         barWidth: 3,
                         isStrokeCapRound: true,
                         dotData: FlDotData(show: false),
@@ -346,10 +345,10 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
         ),
       ),
       child: Row(
@@ -357,12 +356,10 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
         children: [
           Text(
             dateLabel,
-            style: GoogleFonts.outfit(
+            style: GoogleFonts.manrope(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Theme.of(context).brightness == Brightness.dark 
-                  ? Colors.white70 
-                  : Colors.black87,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           Row(
@@ -370,7 +367,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
               _DetailItem(
                 value: '${minutes.toInt()}m',
                 label: 'Duration',
-                color: const Color(0xFF4A90E2),
+                color: AppTheme.emerald,
               ),
               Container(
                 height: 24,
@@ -381,7 +378,7 @@ class _DailyFoodTimelineState extends State<DailyFoodTimeline>
               _DetailItem(
                 value: '$bites',
                 label: 'Bites',
-                color: const Color(0xFFFFB74D),
+                color: AppTheme.amber,
               ),
             ],
           ),
@@ -408,7 +405,7 @@ class _DetailItem extends StatelessWidget {
       children: [
         Text(
           value,
-          style: GoogleFonts.outfit(
+          style: GoogleFonts.manrope(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: color,
@@ -417,11 +414,9 @@ class _DetailItem extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           label,
-          style: GoogleFonts.outfit(
+          style: GoogleFonts.manrope(
             fontSize: 12,
-            color: Theme.of(context).brightness == Brightness.dark 
-                ? Colors.white54 
-                : Colors.black54,
+            color: const Color(0xFF94A3B8),
           ),
         ),
       ],
@@ -436,7 +431,6 @@ class _LegendDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -446,15 +440,21 @@ class _LegendDot extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.5),
+                blurRadius: 4,
+              )
+            ]
           ),
         ),
         const SizedBox(width: 6),
         Text(
           label,
-          style: GoogleFonts.outfit(
+          style: GoogleFonts.manrope(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: isDark ? Colors.grey[300] : Colors.grey[700],
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
           ),
         ),
       ],

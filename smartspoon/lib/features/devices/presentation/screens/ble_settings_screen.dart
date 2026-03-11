@@ -99,6 +99,17 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           centerTitle: true,
           actions: [
             IconButton(
+              icon: const Icon(Icons.bluetooth_disabled),
+              tooltip: 'Disconnect',
+              onPressed: () async {
+                final bleService = Provider.of<BleService>(context, listen: false);
+                await bleService.disconnectDevice(widget.deviceId);
+                if (context.mounted) {
+                  Navigator.of(context).pop(); // Go back home after forcing disconnect
+                }
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Reconnect',
               onPressed: _connectToDevice,
@@ -207,8 +218,8 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDarkMode
-              ? [AppTheme.navy, AppTheme.navy.withOpacity(0.8)]
-              : [AppTheme.turquoise, AppTheme.sky],
+              ? [AppTheme.darkBg, AppTheme.darkSurfaceCard]
+              : [AppTheme.emerald, AppTheme.emerald],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -310,17 +321,34 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        _buildMetricCard(
-          icon: Icons.access_time,
-          iconColor: AppTheme.turquoise,
-          label: 'Last Packet',
-          value: service.lastPacketTime != null
-              ? _formatTimestamp(service.lastPacketTime!)
-              : 'N/A',
-          subtitle: service.lastPacketTime != null
-              ? '${DateTime.now().difference(service.lastPacketTime!).inMilliseconds}ms ago'
-              : 'Waiting...',
-          isDarkMode: isDarkMode,
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricCard(
+                icon: Icons.access_time,
+                iconColor: AppTheme.emerald,
+                label: 'Last Packet',
+                value: service.lastPacketTime != null
+                    ? _formatTimestamp(service.lastPacketTime!)
+                    : 'N/A',
+                subtitle: service.lastPacketTime != null
+                    ? '${DateTime.now().difference(service.lastPacketTime!).inMilliseconds}ms ago'
+                    : 'Waiting...',
+                isDarkMode: isDarkMode,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildMetricCard(
+                icon: Icons.restaurant,
+                iconColor: const Color(0xFF7E57C2),
+                label: 'Bites (MCU)',
+                value: '${service.hardwareBiteCount}',
+                subtitle: service.hardwareBiteCount == 0 ? 'No bites yet' : 'Hardware tracked',
+                isDarkMode: isDarkMode,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -337,12 +365,10 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF233044) : Colors.white,
+        color: isDarkMode ? AppTheme.darkSurfaceCard : AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDarkMode
-              ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+          color: isDarkMode ? AppTheme.darkBorder : AppTheme.border,
         ),
         boxShadow: [
           BoxShadow(
@@ -382,12 +408,10 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF233044) : Colors.white,
+        color: isDarkMode ? AppTheme.darkSurfaceCard : AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDarkMode
-              ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+          color: isDarkMode ? AppTheme.darkBorder : AppTheme.border,
         ),
       ),
       child: Column(
@@ -395,7 +419,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.analytics, color: AppTheme.turquoise, size: 24),
+              Icon(Icons.analytics, color: AppTheme.emerald, size: 24),
               const SizedBox(width: 8),
               Text(
                 'Packet Statistics',
@@ -461,12 +485,12 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF233044) : Colors.white,
+        color: isDarkMode ? AppTheme.darkSurfaceCard : AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.emerald.withOpacity(0.3),
         ),
       ),
       child: Column(
@@ -474,7 +498,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.sensors, color: AppTheme.turquoise, size: 24),
+              Icon(Icons.sensors, color: AppTheme.emerald, size: 24),
               const SizedBox(width: 8),
               Text(
                 'Current IMU Data',
@@ -502,7 +526,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
               scrollDirection: Axis.horizontal,
               child: DataTable(
                 headingRowColor: WidgetStateProperty.all(
-                  AppTheme.turquoise.withOpacity(0.1),
+                  AppTheme.emerald.withOpacity(0.1),
                 ),
                 columns: [
                   DataColumn(
@@ -535,12 +559,12 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.sky.withOpacity(0.1),
+              color: AppTheme.emerald.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: AppTheme.turquoise),
+                Icon(Icons.info_outline, size: 16, color: AppTheme.emerald),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -579,12 +603,12 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF233044) : Colors.white,
+        color: isDarkMode ? AppTheme.darkSurfaceCard : AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.emerald.withOpacity(0.3),
         ),
       ),
       child: Column(
@@ -592,7 +616,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.architecture, color: AppTheme.turquoise, size: 24),
+              Icon(Icons.architecture, color: AppTheme.emerald, size: 24),
               const SizedBox(width: 8),
               Text(
                 'Packet Structure (127 bytes)',
@@ -617,7 +641,12 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
             'uint32 LE (milliseconds)',
           ),
           _buildStructureItem(
-            'Bytes 7-126',
+            'Bytes 7-8',
+            'Bite Count',
+            'uint16 LE (total bites)',
+          ),
+          _buildStructureItem(
+            'Bytes 9-128',
             '10 IMU Samples',
             'Each 12 bytes:',
           ),
@@ -648,7 +677,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
               bytes,
               style: GoogleFonts.robotoMono(
                 fontSize: 12,
-                color: AppTheme.turquoise,
+                color: AppTheme.emerald,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -708,12 +737,12 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF233044) : Colors.white,
+        color: isDarkMode ? AppTheme.darkSurfaceCard : AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDarkMode
               ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+              : AppTheme.emerald.withOpacity(0.3),
         ),
       ),
       child: Column(
@@ -724,7 +753,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.code, color: AppTheme.turquoise, size: 24),
+                  Icon(Icons.code, color: AppTheme.emerald, size: 24),
                   const SizedBox(width: 8),
                   Text(
                     'Raw Packet Data',
@@ -828,7 +857,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           'Raw data copied to clipboard',
           style: GoogleFonts.lato(),
         ),
-        backgroundColor: AppTheme.turquoise,
+        backgroundColor: AppTheme.emerald,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -844,12 +873,10 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDarkMode ? const Color(0xFF233044) : Colors.white,
+        color: isDarkMode ? AppTheme.darkSurfaceCard : AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDarkMode
-              ? Colors.transparent
-              : AppTheme.sky.withOpacity(0.3),
+          color: isDarkMode ? AppTheme.darkBorder : AppTheme.border,
         ),
         boxShadow: [
           BoxShadow(
@@ -864,7 +891,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.waves, color: AppTheme.turquoise, size: 24),
+              Icon(Icons.waves, color: AppTheme.emerald, size: 24),
               const SizedBox(width: 8),
               Text(
                 'Tremor Analysis',
@@ -919,7 +946,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
                     'Frequency',
                     '${result.frequency.toStringAsFixed(1)} Hz',
                     Icons.graphic_eq,
-                    AppTheme.turquoise,
+                    AppTheme.emerald,
                     isDarkMode,
                   ),
                 ),

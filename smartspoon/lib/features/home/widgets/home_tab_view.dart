@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/home/widgets/home_sections.dart';
 import 'package:smartspoon/features/insights/application/insights_controller.dart';
-import 'package:smartspoon/features/insights/infrastructure/mock_insights_repository.dart';
 import 'package:smartspoon/features/insights/presentation/insights_dashboard.dart';
 import 'package:smartspoon/features/profile/index.dart';
 
@@ -16,20 +15,6 @@ class HomeTabView extends StatefulWidget {
 }
 
 class _HomeTabViewState extends State<HomeTabView> {
-  late final InsightsController _insightsController;
-
-  @override
-  void initState() {
-    super.initState();
-    _insightsController = InsightsController(MockInsightsRepository())..init();
-  }
-
-  @override
-  void dispose() {
-    _insightsController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
@@ -39,10 +24,7 @@ class _HomeTabViewState extends State<HomeTabView> {
           index: index,
           children: [
             const HomeSections(),
-            ChangeNotifierProvider.value(
-              value: _insightsController,
-              child: const InsightsDashboard(),
-            ),
+            const InsightsDashboard(),
             const ProfilePage(),
           ],
         );

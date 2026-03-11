@@ -18,11 +18,11 @@ export const updateUserProfile = async (id, fields) => {
   const allowed = [
     "name",
     "phone",
+    "gender",
     "location",
-    "daily_goal",
+    "age",
     "notifications_enabled",
     "avatar_url",
-    "profile_metadata",
   ];
 
   const setClauses = [];
@@ -41,22 +41,13 @@ export const updateUserProfile = async (id, fields) => {
       let value = fields[key];
       if (
         [
-          "name",
-          "phone",
-          "location",
-          "avatar_url",
+          "name", "phone", "gender", "location", "avatar_url",
         ].includes(key)
       ) {
         value = coerceStringOrNull(value);
       }
-      if (key === "daily_goal") {
-        value = typeof value === "number" ? Math.round(value) : null;
-      }
       if (key === "notifications_enabled") {
         value = typeof value === "boolean" ? value : null;
-      }
-      if (key === "profile_metadata") {
-        value = typeof value === "object" ? JSON.stringify(value) : null;
       }
 
       setClauses.push(`${key}=$${values.length + 1}`);
@@ -66,7 +57,8 @@ export const updateUserProfile = async (id, fields) => {
 
   if (setClauses.length === 0) {
     const res = await pool.query(
-      `SELECT id, email, name, phone, location, daily_goal, notifications_enabled, avatar_url FROM users WHERE id=$1`,
+      `SELECT id, email, name, phone, gender, location, age,
+            notifications_enabled, avatar_url FROM users WHERE id=$1`,
       [id]
     );
     return res.rows[0];
@@ -75,7 +67,7 @@ export const updateUserProfile = async (id, fields) => {
   setClauses.push(`updated_at=NOW()`);
 
   const query = `UPDATE users SET ${setClauses.join(", ")} WHERE id=$${values.length + 1
-    } RETURNING id, email, name, phone, location, daily_goal, notifications_enabled, avatar_url, profile_metadata`;
+    } RETURNING id, email, name, phone, gender, location, age, notifications_enabled, avatar_url`;
   values.push(id);
 
   const res = await pool.query(query, values);
@@ -94,8 +86,8 @@ export const markEmailVerified = async (id) => {
 export const getUserProfile = async (id) => {
   const res = await pool.query(
     `SELECT 
-      id, email, name, phone, location, daily_goal, notifications_enabled, avatar_url,
-      profile_metadata, created_at, updated_at
+      id, email, name, notifications_enabled, avatar_url,
+      created_at, updated_at
     FROM users WHERE id = $1`,
     [id]
   );

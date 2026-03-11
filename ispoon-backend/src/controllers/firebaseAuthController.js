@@ -5,6 +5,7 @@ import {
 } from "../config/firebaseAdmin.js";
 import { generateAuthTokens } from "../services/token.service.js";
 import { sendWelcomeEmail } from "../services/email.service.js";
+import logger from "../utils/logger.js";
 
 /**
  * Verify Firebase ID Token and Create/Update User in Database
@@ -45,16 +46,13 @@ export const verifyFirebaseToken = async (req, res) => {
     let emailVerified = !!decoded.email_verified;
 
     // Enrich from Admin SDK if claims are missing (common for email/password right after signup)
-    if (!name || !picture || !providerId || !email || !emailVerified) {
+    if (!name || !picture || !email || !emailVerified) {
       try {
         const userRec = await admin.auth().getUser(firebaseUid);
         email = email || userRec.email || null;
         name = name || userRec.displayName || null;
         picture = picture || userRec.photoURL || null;
         emailVerified = emailVerified || !!userRec.emailVerified;
-        if (!providerId && Array.isArray(userRec.providerData) && userRec.providerData.length > 0) {
-          providerId = userRec.providerData[0]?.providerId || null;
-        }
       } catch (_) { }
     }
 
@@ -99,12 +97,17 @@ export const verifyFirebaseToken = async (req, res) => {
       userRow = inserted.rows[0];
     }
 
-    // Handle email verification based on auth provider
-    // Check Firebase verification status first (fresh from Firebase, not DB)
-    const authProvider = userRow.auth_provider || providerId;
+    // Determine the current sign-in method from the live Firebase token.
+    // providerId from the token reflects what was used THIS sign-in (e.g. 'google.com', 'password').
+    // userRow.auth_provider reflects the original/primary provider stored in DB.
+    const currentSignInProvider = providerId || userRow.auth_provider;
 
-    if (authProvider === 'google.com') {
-      // Google OAuth users are automatically verified by Google
+    logger.info(`[verifyFirebaseToken] uid=${firebaseUid} currentProvider=${currentSignInProvider} emailVerified=${emailVerified} db.email_verified=${userRow.email_verified} db.auth_provider=${userRow.auth_provider}`);
+
+    if (emailVerified) {
+      // ✅ Firebase already confirmed the email is verified — allow through for ALL providers.
+      // This covers: Google OAuth (always verified), email/password (user clicked verify link),
+      // and cross-provider cases (Google user who also set a password).
       if (!userRow.email_verified) {
         await pool.query(
           'UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1',
@@ -112,32 +115,23 @@ export const verifyFirebaseToken = async (req, res) => {
         );
         userRow.email_verified = true;
       }
-    } else if (authProvider === 'password') {
-      // For Firebase email/password, use the FRESH emailVerified status from Firebase
-      // (not the stale DB value)
-      if (!emailVerified) {
+    } else if (currentSignInProvider === 'password' || currentSignInProvider === 'firebase') {
+      // ❌ Email/password sign-in with unverified email — block login.
+      // Check DB too: if the user previously verified via Google (same email account),
+      // trust the DB value and allow through.
+      if (!userRow.email_verified) {
         return res.status(403).json({
           message: "Email not verified. Please check your inbox and verify your email address.",
           requiresVerification: true,
           provider: 'firebase',
-          email: userRow.email,
         });
       }
-
-      // Sync the verification status to DB if it changed
-      if (emailVerified && !userRow.email_verified) {
-        await pool.query(
-          'UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1',
-          [userRow.id]
-        );
-        userRow.email_verified = true;
-      }
     } else if (!userRow.email_verified) {
-      // Other OAuth providers
+      // Other OAuth providers that haven't verified — block.
       return res.status(403).json({
         message: "Email not verified. Please verify your email with your authentication provider.",
         requiresVerification: true,
-        provider: authProvider,
+        provider: currentSignInProvider,
       });
     }
 
@@ -145,23 +139,16 @@ export const verifyFirebaseToken = async (req, res) => {
     // Only send if user is verified AND welcome email hasn't been sent yet
     if (userRow.email_verified && !userRow.welcome_email_sent) {
       try {
-        console.log(`📧 Sending welcome email to ${userRow.email}...`);
-        await sendWelcomeEmail({
-          email: userRow.email,
-          name: userRow.name,
-        });
-
-        // Mark welcome email as sent in database
+        logger.info('Sending welcome email', { userId: userRow.id });
+        await sendWelcomeEmail({ email: userRow.email, name: userRow.name });
         await pool.query(
           'UPDATE users SET welcome_email_sent = true, welcome_email_sent_at = NOW(), updated_at = NOW() WHERE id = $1',
           [userRow.id]
         );
-
-        console.log(`✅ Welcome email sent successfully to ${userRow.email}`);
+        logger.info('Welcome email sent', { userId: userRow.id });
       } catch (emailError) {
-        // Log error but don't block user login if email fails
-        console.error(`❌ Failed to send welcome email to ${userRow.email}:`, emailError);
-        // Continue with login even if email fails
+        // Log but don't block login if email delivery fails
+        logger.error('Failed to send welcome email', { userId: userRow.id, error: emailError });
       }
     }
 
@@ -185,9 +172,9 @@ export const verifyFirebaseToken = async (req, res) => {
       },
     });
   } catch (err) {
-    try { console.error("verifyFirebaseToken error:", err); } catch (_) { }
     const msg = String(err?.message || "");
     const isAuth = /id token|auth|credential|parse private key|pem/i.test(msg);
+    logger.error('verifyFirebaseToken failed', { error: err });
     const status = isAuth ? 401 : 500;
     return res.status(status).json({ message: isAuth ? "Invalid Firebase ID token" : "Internal error" });
   }
@@ -239,12 +226,16 @@ export const requestEmailVerification = async (req, res) => {
       });
     }
 
-    // Generate verification link using Firebase Admin SDK
+    // Generate verification link and send email using Firebase Admin SDK
     try {
+      // generateFirebaseVerificationLink returns a URL
+      // Firebase Admin SDK's generateEmailVerificationLink creates the link
+      // but does NOT send the email automatically — we need to send it ourselves
       const verificationLink = await generateFirebaseVerificationLink(email);
 
-      // Firebase handles sending the verification email directly
-      // No additional email service needed
+      // Send the verification email via our email service
+      const { sendVerificationEmail } = await import("../services/email.service.js");
+      await sendVerificationEmail({ email, verificationLink });
 
       return res.json({
         message: "Verification email sent. Please check your inbox.",
@@ -252,20 +243,16 @@ export const requestEmailVerification = async (req, res) => {
         sent: true
       });
     } catch (linkError) {
-      console.error("Failed to generate verification link:", linkError);
+      logger.error('Failed to generate/send verification link', { error: linkError });
       return res.status(500).json({
         message: "Failed to send verification email. Please try again later."
       });
     }
   } catch (err) {
-    try {
-      console.error("requestEmailVerification error:", err);
-    } catch (_) { }
-
     const msg = String(err?.message || "");
     const isAuth = /id token|auth|credential|parse private key|pem/i.test(msg);
+    logger.error('requestEmailVerification failed', { error: err });
     const status = isAuth ? 401 : 500;
-
     return res.status(status).json({
       message: isAuth ? "Invalid Firebase ID token" : "Internal error"
     });

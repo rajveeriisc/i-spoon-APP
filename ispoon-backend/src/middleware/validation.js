@@ -2,15 +2,14 @@ import {
   sanitizeString,
   sanitizeNumber,
   sanitizeBoolean,
-  sanitizeArray,
-  isValidEmail
 } from '../utils/validators.js';
+
+// ─── User profile ─────────────────────────────────────────────────────────────
 
 export const validateUpdateMe = (req, res, next) => {
   const b = req.body || {};
   const errors = {};
 
-  // Validate and sanitize each field
   if (b.name !== undefined) {
     if (typeof b.name !== 'string') {
       errors.name = 'name must be a string';
@@ -35,35 +34,20 @@ export const validateUpdateMe = (req, res, next) => {
     }
   }
 
-  if (b.bio !== undefined) {
-    if (typeof b.bio !== 'string') {
-      errors.bio = 'bio must be a string';
+  if (b.gender !== undefined) {
+    if (typeof b.gender !== 'string') {
+      errors.gender = 'gender must be a string';
     } else {
-      b.bio = sanitizeString(b.bio, 500);
+      b.gender = sanitizeString(b.gender, 20);
     }
   }
 
-  if (b.diet_type !== undefined) {
-    if (typeof b.diet_type !== 'string') {
-      errors.diet_type = 'diet_type must be a string';
+  if (b.age !== undefined) {
+    const age = Number(b.age);
+    if (!Number.isInteger(age) || age < 1 || age > 150) {
+      errors.age = 'age must be an integer between 1 and 150';
     } else {
-      b.diet_type = sanitizeString(b.diet_type, 50);
-    }
-  }
-
-  if (b.activity_level !== undefined) {
-    if (typeof b.activity_level !== 'string') {
-      errors.activity_level = 'activity_level must be a string';
-    } else {
-      b.activity_level = sanitizeString(b.activity_level, 50);
-    }
-  }
-
-  if (b.allergies !== undefined) {
-    if (!Array.isArray(b.allergies)) {
-      errors.allergies = 'allergies must be an array';
-    } else {
-      b.allergies = sanitizeArray(b.allergies, 20);
+      b.age = age;
     }
   }
 
@@ -77,34 +61,24 @@ export const validateUpdateMe = (req, res, next) => {
 
   if (b.notifications_enabled !== undefined) {
     if (typeof b.notifications_enabled !== 'boolean' &&
-      typeof b.notifications_enabled !== 'string') {
+        typeof b.notifications_enabled !== 'string') {
       errors.notifications_enabled = 'notifications_enabled must be a boolean';
     } else {
       b.notifications_enabled = sanitizeBoolean(b.notifications_enabled);
     }
   }
 
-  if (b.emergency_contact !== undefined) {
-    if (typeof b.emergency_contact !== 'string') {
-      errors.emergency_contact = 'emergency_contact must be a string';
-    } else {
-      b.emergency_contact = sanitizeString(b.emergency_contact, 100);
-    }
-  }
-
   if (Object.keys(errors).length > 0) {
-    return res.status(400).json({
-      message: 'Validation failed',
-      errors
-    });
+    return res.status(400).json({ message: 'Validation failed', errors });
   }
 
-  // Replace request body with sanitized data
   req.body = b;
   next();
 };
 
+// ─── Meals ────────────────────────────────────────────────────────────────────
 
+const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
 export const validateCreateMeal = (req, res, next) => {
   const b = req.body || {};
@@ -112,8 +86,8 @@ export const validateCreateMeal = (req, res, next) => {
 
   if (!b.meal_type) {
     errors.meal_type = 'meal_type is required';
-  } else if (!['Breakfast', 'Lunch', 'Dinner', 'Snack'].includes(b.meal_type)) {
-    errors.meal_type = 'meal_type must be one of: Breakfast, Lunch, Dinner, Snack';
+  } else if (!MEAL_TYPES.includes(b.meal_type)) {
+    errors.meal_type = `meal_type must be one of: ${MEAL_TYPES.join(', ')}`;
   }
 
   if (!b.started_at) {
@@ -130,6 +104,113 @@ export const validateCreateMeal = (req, res, next) => {
 };
 
 export const validateUpdateMeal = (req, res, next) => {
-  // Similar to create, but fields are optional
-  next(); // Placeholder for now or strict validation if needed
+  const b = req.body || {};
+  const errors = {};
+
+  if (b.meal_type !== undefined && !MEAL_TYPES.includes(b.meal_type)) {
+    errors.meal_type = `meal_type must be one of: ${MEAL_TYPES.join(', ')}`;
+  }
+
+  if (b.ended_at !== undefined && b.ended_at !== null) {
+    if (isNaN(Date.parse(b.ended_at))) {
+      errors.ended_at = 'ended_at must be a valid ISO date string';
+    }
+  }
+
+  if (b.total_bites !== undefined) {
+    if (typeof b.total_bites !== 'number' || b.total_bites < 0) {
+      errors.total_bites = 'total_bites must be a non-negative number';
+    }
+  }
+
+  if (b.avg_pace_bpm !== undefined && b.avg_pace_bpm !== null) {
+    if (typeof b.avg_pace_bpm !== 'number' || b.avg_pace_bpm < 0) {
+      errors.avg_pace_bpm = 'avg_pace_bpm must be a non-negative number';
+    }
+  }
+
+  if (b.duration_minutes !== undefined && b.duration_minutes !== null) {
+    if (typeof b.duration_minutes !== 'number' || b.duration_minutes < 0) {
+      errors.duration_minutes = 'duration_minutes must be a non-negative number';
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({ message: 'Validation failed', errors });
+  }
+
+  next();
+};
+
+// ─── Bites sync ───────────────────────────────────────────────────────────────
+
+/**
+ * Validates the bites array sent during mobile sync.
+ * Each bite must have a timestamp; all other fields are optional numerics.
+ */
+export const validateSyncBites = (req, res, next) => {
+  const { bites } = req.body || {};
+  const errors = {};
+
+  if (!Array.isArray(bites) || bites.length === 0) {
+    return res.status(400).json({ message: 'Validation failed', errors: { bites: 'bites must be a non-empty array' } });
+  }
+
+  if (bites.length > 500) {
+    return res.status(400).json({ message: 'Validation failed', errors: { bites: 'bites batch cannot exceed 500 items' } });
+  }
+
+  for (let i = 0; i < bites.length; i++) {
+    const bite = bites[i];
+    if (!bite.timestamp || isNaN(Date.parse(bite.timestamp))) {
+      errors[`bites[${i}].timestamp`] = 'timestamp must be a valid ISO date string';
+    }
+    if (bite.tremor_magnitude !== undefined && bite.tremor_magnitude !== null) {
+      if (typeof bite.tremor_magnitude !== 'number') {
+        errors[`bites[${i}].tremor_magnitude`] = 'tremor_magnitude must be a number';
+      }
+    }
+    if (bite.tremor_frequency !== undefined && bite.tremor_frequency !== null) {
+      if (typeof bite.tremor_frequency !== 'number') {
+        errors[`bites[${i}].tremor_frequency`] = 'tremor_frequency must be a number';
+      }
+    }
+    if (bite.food_temp_c !== undefined && bite.food_temp_c !== null) {
+      if (typeof bite.food_temp_c !== 'number') {
+        errors[`bites[${i}].food_temp_c`] = 'food_temp_c must be a number';
+      }
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({ message: 'Validation failed', errors });
+  }
+
+  next();
+};
+
+// ─── Device registration ──────────────────────────────────────────────────────
+
+export const validateRegisterDevice = (req, res, next) => {
+  const b = req.body || {};
+  const errors = {};
+
+  if (!b.macAddressHash || typeof b.macAddressHash !== 'string') {
+    errors.macAddressHash = 'macAddressHash is required and must be a string';
+  } else if (b.macAddressHash.trim().length < 8) {
+    errors.macAddressHash = 'macAddressHash appears too short to be valid';
+  }
+
+  if (b.heaterMaxTemp !== undefined && b.heaterMaxTemp !== null) {
+    const temp = Number(b.heaterMaxTemp);
+    if (isNaN(temp) || temp < 30 || temp > 80) {
+      errors.heaterMaxTemp = 'heaterMaxTemp must be a number between 30 and 80';
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({ message: 'Validation failed', errors });
+  }
+
+  next();
 };

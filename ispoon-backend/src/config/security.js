@@ -47,8 +47,11 @@ export const SECURITY_CONFIG = {
     AUDIENCE: 'i-spoon-mobile',
   },
 
-  // CORS allowed origins (allow all)
-  ALLOWED_ORIGINS: true,
+  // CORS allowed origins — read from ALLOWED_ORIGINS env var (comma-separated)
+  // Example: ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+    : ['http://localhost:3000', 'http://localhost:5000'],
 };
 
 // Security utilities

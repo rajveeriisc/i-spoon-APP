@@ -107,7 +107,7 @@ class FirebaseAuthService {
         // ✨ SEND VERIFICATION EMAIL (This was missing!)
         if (!user.emailVerified) {
           await user.sendEmailVerification();
-          print('✅ Verification email sent to: $email');
+          debugPrint('✅ Verification email sent to: $email');
         }
 
         // Return user data (backend will require verification before issuing JWT)
@@ -173,6 +173,7 @@ class FirebaseAuthService {
       final user = userCredential.user;
 
       if (user != null) {
+        final idToken = await user.getIdToken();
         // Return user data from Firebase Auth (no Firestore needed)
         return {
           'success': true,
@@ -183,8 +184,8 @@ class FirebaseAuthService {
             'avatar_url': user.photoURL,
             'auth_provider': 'google',
           },
-          'token': await user.getIdToken(),
-          'firebase_token': await user.getIdToken(), // For backend verification
+          'token': idToken,
+          'firebase_token': idToken, // For backend verification
         };
       }
       throw Exception('Google sign-in failed');
@@ -243,7 +244,7 @@ class FirebaseAuthService {
       }
 
       await user.sendEmailVerification();
-      print('✅ Verification email sent to: ${user.email}');
+      debugPrint('✅ Verification email sent to: ${user.email}');
       
       return {
         'success': true,
@@ -274,7 +275,7 @@ class FirebaseAuthService {
       await user.reload(); // Refresh user data from Firebase
       return _auth.currentUser?.emailVerified ?? false;
     } catch (e) {
-      print('Error checking email verification: $e');
+      debugPrint('Error checking email verification: $e');
       return false;
     }
   }

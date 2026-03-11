@@ -55,9 +55,12 @@ export const uploadUserAvatar = async (userId, fileInfo) => {
   // Delete old avatar file (async, non-blocking)
   if (oldAvatarUrl && oldAvatarUrl.startsWith("/uploads/avatars/")) {
     const oldPath = path.join(process.cwd(), oldAvatarUrl.replace(/^\//, ""));
-    fs.unlink(oldPath).catch(() => {
-      // Silent fail - old avatar deletion is not critical
-    });
+    const allowedBase = path.join(process.cwd(), "uploads", "avatars");
+    if (oldPath.startsWith(allowedBase)) {
+      fs.unlink(oldPath).catch((err) => {
+        console.error("Failed to delete old avatar:", err.message);
+      });
+    }
   }
 
   return buildUserResponse(updatedUser);
@@ -80,9 +83,12 @@ export const removeUserAvatar = async (userId) => {
   // Delete avatar file (async, non-blocking)
   if (currentAvatarUrl && currentAvatarUrl.startsWith("/uploads/avatars/")) {
     const filePath = path.join(process.cwd(), currentAvatarUrl.replace(/^\//, ""));
-    fs.unlink(filePath).catch(() => {
-      // Silent fail
-    });
+    const allowedBase = path.join(process.cwd(), "uploads", "avatars");
+    if (filePath.startsWith(allowedBase)) {
+      fs.unlink(filePath).catch((err) => {
+        console.error("Failed to delete avatar:", err.message);
+      });
+    }
   }
 
   return buildUserResponse(updatedUser);

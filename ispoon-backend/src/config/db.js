@@ -17,10 +17,13 @@ const shouldUseSSL = (() => {
   }
 })();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
-  // TODO: Enable certificate validation in production
+  // In production, validate the SSL certificate (prevents MITM on DB connection).
+  // In dev/local, allow self-signed certs (NeonDB requires SSL but has valid certs in prod).
+  ssl: shouldUseSSL ? { rejectUnauthorized: isProduction } : false,
   // Connection pool configuration
   max: 20, // Maximum pool size
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds

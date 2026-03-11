@@ -1,2 +1,21 @@
 node_modules
-#.env    
+.env
+.env.*
+!.env.example
+
+# Secrets & credentials
+secrets/
+*.pem
+*.key
+*.p12
+serviceAccount.json
+fix-env.txt
+
+# Logs
+*.log
+lt.log
+lt_new.log
+ngrok.log
+
+# OS
+.DS_Store

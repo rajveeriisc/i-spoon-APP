@@ -1,6 +1,12 @@
 import express from "express";
-import * as AnalyticsController from "../controllers/analyticsController.js";
+import analyticsController from "../controllers/analyticsController.js";
 import { protect } from "../middleware/authMiddleware.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import {
+    getDashboardSchema,
+    getAnalyticsByDateSchema,
+    getSummarySchema
+} from "../validators/analytics.schema.js";
 
 const router = express.Router();
 
@@ -8,10 +14,9 @@ const router = express.Router();
 router.use(protect);
 
 // Dashboard and analytics
-router.get("/dashboard", AnalyticsController.getDashboard);
-router.get("/today", AnalyticsController.getTodayAnalytics);
-router.get("/date/:date", AnalyticsController.getAnalyticsByDate);
-router.get("/summary", AnalyticsController.getSummary);
-router.post("/refresh/:date", AnalyticsController.refreshAnalytics);
+router.get("/dashboard", validateRequest(getDashboardSchema), analyticsController.getDashboard);
+router.get("/today", analyticsController.getTodayAnalytics);
+router.get("/date/:date", validateRequest(getAnalyticsByDateSchema), analyticsController.getAnalyticsByDate);
+router.get("/summary", validateRequest(getSummarySchema), analyticsController.getSummary);
 
 export default router;

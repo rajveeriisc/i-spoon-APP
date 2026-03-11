@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/features/insights/index.dart';
-import 'package:smartspoon/features/insights/presentation/widgets/tremor_breakdown_chart.dart';
-import 'package:smartspoon/features/auth/providers/user_provider.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/premium_widgets.dart';
+import 'package:smartspoon/core/widgets/geometric_background.dart';
+import 'package:smartspoon/core/widgets/premium_header.dart';
 
-
-/// Wellness-focused Analytics Dashboard
-/// Redesigned with calming colors, tabbed navigation, and AI insights
+/// Wellness-focused Analytics Dashboard with Premium Dark Theme
 class InsightsDashboard extends StatefulWidget {
   const InsightsDashboard({super.key});
 
@@ -18,159 +18,120 @@ class InsightsDashboard extends StatefulWidget {
 class _InsightsDashboardState extends State<InsightsDashboard> {
   String _activeTab = 'eating';
 
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning 👋';
-    if (hour < 17) return 'Good Afternoon 👋';
-    return 'Good Evening 👋';
-  }
-
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<InsightsController>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final unifiedData = context.watch<UnifiedDataService>();
 
     return Scaffold(
-      backgroundColor: WellnessColors.getBackground(context),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          // Refresh data
-          await Future.delayed(const Duration(seconds: 1));
-        },
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            // Hero Header
-            SliverToBoxAdapter(
-              child: HeroHeader(
-                greeting: _getGreeting(),
-                subtitle: 'Your Wellness Insights',
-                onRefresh: () {
-                  setState(() {});
-                },
-              ),
-            ),
-
-            SliverPadding(
-              padding: const EdgeInsets.all(20),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  // Combined Metric Card
-                  CombinedMetricCard(
-                      metric1: MetricData(
-                        icon: '🍽',
-                        title: 'Total Bites',
-                        value: '${controller.summary?.totalBites ?? 0}',
-                        trend: const MetricTrend(value: 12, direction: 'up'),
-                        progress: 74,
-                        color: WellnessColors.primaryBlue,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const MealsAnalysisPage(),
-                            ),
-                          );
-                        },
-                      ),
-                      metric2: MetricData(
-                        icon: '⏱',
-                        title: 'Eating Pace',
-                        value:
-                            '${(controller.summary?.eatingPaceBpm ?? 0).toStringAsFixed(1)}s',
-                        color: WellnessColors.primaryGreen,
-                        subtitle: 'Optimal',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => BiteHistoryPage(
-                                summaries: controller.dailySummaries,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Tab Navigation
-                  _buildTabNavigation(),
-
-                  const SizedBox(height: 20),
-
-                  // Tab Content
-                  _buildTabContent(controller),
-
-                  const SizedBox(height: 24),
-
-                  // AI Insights Section
-                  const SectionTitle(
-                    title: 'Wellness Insights',
-                    subtitle: 'Daily Analysis',
-                  ),
-                  const SizedBox(height: 16),
-
-                  AIInsightCard(
-                    type: 'Great Progress',
-                    title: 'Tremor levels decreased by 23%',
-                    message: 'Your tremor stability has improved significantly over the past week. Keep up the great work!',
-                    accentColor: WellnessColors.primaryGreen,
-                    onAction: () {},
-                    onLearnMore: () {},
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  AIInsightCard(
-                    type: 'Eating Speed Alert',
-                    title: 'Pace increased by 34%',
-                    message: 'Your eating pace has increased. Try to slow down and chew more thoroughly for better digestion.',
-                    accentColor: WellnessColors.amber,
-                    onAction: () {},
-                    onLearnMore: () {},
-                  ),
-
-                  const SizedBox(height: 100), // Bottom nav clearance
-                ]),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTabNavigation() {
-    return Container(
-      decoration: BoxDecoration(
-        color: WellnessColors.getCardColor(context),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            offset: const Offset(0, 2),
-            blurRadius: 4,
-          ),
-        ],
-      ),
-      child: Column(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: Stack(
         children: [
+          // 1. Premium dark gradient background
           Container(
             decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: WellnessColors.getBorderColor(context),
-                  width: 1,
-                ),
-              ),
+              gradient: Theme.of(context).brightness == Brightness.dark
+                  ? AppTheme.darkBackgroundGradient
+                  : AppTheme.backgroundGradient,
             ),
-            child: Row(
+          ),
+          // 2. Subtle geometric background pattern
+          const GeometricBackground(),
+          
+          // 3. Content
+          SafeArea(
+            child: Column(
               children: [
-                _buildTab('Eating Patterns', 'eating'),
-                _buildTab('Tremor', 'tremor'),
-                _buildTab('Temp', 'temperature'),
+                const PremiumHeader(
+                  title: 'Wellness Insights',
+                  subtitle: 'Your Daily Health Summary',
+                  showProfile: false, // Save space or keep minimal
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      await Future.delayed(const Duration(seconds: 1));
+                      setState(() {});
+                    },
+                    color: AppTheme.emerald,
+                    backgroundColor: const Color(0xFFEEF2FF),
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+                      child: Column(
+                        children: [
+                          CombinedMetricCard(
+                            metric1: MetricData(
+                              icon: '🍽',
+                              title: 'Total Bites',
+                              value: '${unifiedData.totalBites}',
+                              trend: const MetricTrend(value: 12, direction: 'up'), // Real data needed?
+                              progress: 74,
+                              color: AppTheme.emerald,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const MealsAnalysisPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            metric2: MetricData(
+                              icon: '⏱',
+                              title: 'Eating Pace',
+                              value: '${(unifiedData.avgBiteTime).toStringAsFixed(1)}s',
+                              color: AppTheme.amber, // Gold for pace
+                              subtitle: 'sec / bite',
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const BiteHistoryPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Tab Navigation
+                          _buildTabNavigation(),
+                          const SizedBox(height: 24),
+
+                          // Tab Content
+                          _buildTabContent(controller),
+                          const SizedBox(height: 24),
+                          
+                          // Insights Section
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: SectionTitle(
+                              title: 'Key Observations',
+                              subtitle: 'Recent behavior & trends',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          AIInsightCard(
+                            type: 'Great Progress',
+                            title: 'Tremor levels decreased by 23%',
+                            message: 'Your tremor stability has improved significantly over the past week.',
+                            accentColor: AppTheme.emerald,
+                            onAction: () {},
+                          ),
+                          const SizedBox(height: 12),
+                          AIInsightCard(
+                            type: 'Eating Speed Alert',
+                            title: 'Pace increased by 34%',
+                            message: 'Try to slow down and chew more thoroughly for better digestion.',
+                            accentColor: AppTheme.amber,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -179,50 +140,45 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
     );
   }
 
+  Widget _buildTabNavigation() {
+    return Container(
+      height: 50,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        children: [
+          _buildTab('Eating', 'eating'),
+          _buildTab('Tremor', 'tremor'),
+          _buildTab('Temp', 'temperature'),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTab(String label, String key) {
     final isActive = _activeTab == key;
-
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _activeTab = key),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: isActive
-                ? WellnessColors.primaryBlue.withValues(alpha: 0.05)
-                : Colors.transparent,
+            color: isActive ? AppTheme.emerald.withValues(alpha: 0.2) : Colors.transparent,
+            borderRadius: BorderRadius.circular(21),
+            border: isActive ? Border.all(color: AppTheme.emerald.withValues(alpha: 0.5)) : null,
           ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Center(
-                child: Text(
-                  label,
-                  style: GoogleFonts.outfit(
-                    fontSize: 14,
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                    color: isActive
-                        ? WellnessColors.primaryBlue
-                        : WellnessColors.getTextSecondary(context),
-                  ),
-                ),
-              ),
-              if (isActive)
-                Positioned(
-                  bottom: -14,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    height: 3,
-                    decoration: const BoxDecoration(
-                      color: WellnessColors.primaryBlue,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(3),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 14,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+              color: isActive ? AppTheme.emerald : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           ),
         ),
       ),
@@ -230,6 +186,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
   }
 
   Widget _buildTabContent(InsightsController controller) {
+    // FadeSwitcher or AnimatedSwitcher logic could go here, keeping it simple for now
     switch (_activeTab) {
       case 'eating':
         return _buildEatingPatternsTab(controller);
@@ -246,320 +203,33 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Daily Insight Card
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F9FF),
-            borderRadius: BorderRadius.circular(12),
-            border: const Border(
-              left: BorderSide(color: WellnessColors.primaryBlue, width: 4),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '💡 Daily Insight',
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: WellnessColors.primaryBlue,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'You ate ${controller.summary?.totalBites ?? 0} bites today. Your pace was mostly Optimal (3-4s). Great job!',
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  color: const Color(0xFF334155),
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-
+        DailyFoodTimeline(summaries: controller.dailySummaries),
         const SizedBox(height: 24),
-
-        // Meal Distribution
-        Text(
-          'Meal Distribution',
-          style: GoogleFonts.outfit(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: WellnessColors.getTextPrimary(context),
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        _buildMealDistributionChart(controller),
-
-        const SizedBox(height: 24),
-
-        // Weekly Trends Header with View All button
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Weekly History',
-              style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: WellnessColors.getTextPrimary(context),
-              ),
-            ),
-            if (controller.dailySummaries.isNotEmpty)
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => BiteHistoryPage(
-                        summaries: controller.dailySummaries,
-                      ),
-                    ),
-                  );
-                },
-                child: Text(
-                  'View All',
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.w600,
-                    color: WellnessColors.primaryBlue,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // Weekly Trends
-        DailyFoodTimeline(events: controller.bites),
       ],
     );
   }
 
-  Widget _buildMealDistributionChart(InsightsController controller) {
-    // 1. Get Goals from UserProvider
-    final user = Provider.of<UserProvider>(context);
-    
-    // 2. Get Actuals from InsightsController (Today's Summary)
-    final today = DateTime.now();
-    DailyBiteSummary? todaySummary;
-    try {
-      todaySummary = controller.dailySummaries.firstWhere(
-        (s) => s.date.year == today.year && s.date.month == today.month && s.date.day == today.day,
-      );
-    } catch (_) {
-      // No summary for today yet
-    }
-
-    int getActual(String key) {
-       if (todaySummary == null) return 0;
-       // Try Title Case then lowercase
-       return todaySummary.mealBites[key] ?? todaySummary.mealBites[key.toLowerCase()] ?? 0;
-    }
-
-    // Since meal-specific goals were removed, distribute dailyGoal equally
-    final dailyGoal = user.dailyGoal ?? 50;
-    final defaultMealGoal = (dailyGoal / 4).round(); // Equal distribution across 4 meals
-
-    final meals = [
-      {
-        'name': 'Breakfast', 
-        'bites': getActual('Breakfast'), 
-        'goal': defaultMealGoal,
-      },
-      {
-        'name': 'Lunch', 
-        'bites': getActual('Lunch'), 
-        'goal': defaultMealGoal,
-      },
-      {
-        'name': 'Dinner', 
-        'bites': getActual('Dinner'), 
-        'goal': defaultMealGoal,
-      },
-      {
-        'name': 'Snacks', 
-        'bites': getActual('Snacks'), 
-        'goal': defaultMealGoal,
-      },
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8EDF2)),
-      ),
-      child: Column(
-        children: meals.map((meal) {
-          final bites = meal['bites'] as int;
-          final goal = meal['goal'] as int;
-          final safeGoal = goal > 0 ? goal : 1; // Prevent div by zero
-          final percentVal = bites / safeGoal;
-          final displayPercent = (percentVal * 100).toInt();
-          final barPercent = percentVal.clamp(0.0, 1.0);
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      meal['name'] as String,
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF475569),
-                      ),
-                    ),
-                    Text(
-                      '$bites / $goal bites',
-                      style: GoogleFonts.outfit(
-                        fontSize: 12,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Stack(
-                  children: [
-                    Container(
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE2E8F0),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    FractionallySizedBox(
-                      widthFactor: barPercent,
-                      child: Container(
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: WellnessColors.primaryBlue.withValues(alpha: 0.8),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 10,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: Text(
-                          '$displayPercent%',
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF2E3A4A),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   Widget _buildTremorTab(InsightsController controller) {
-    // Calculate today's tremor summary
+    // Logic for daily insight from original code
     final today = DateTime.now();
     final todaySummary = controller.tremorSummaries.firstWhere(
       (s) => s.date.year == today.year && s.date.month == today.month && s.date.day == today.day,
       orElse: () => DailyTremorSummary(
         date: today,
         avgMagnitude: 0,
-        peakMagnitude: 0,
         avgFrequencyHz: 0,
         dominantLevel: TremorLevel.low,
         tremorLevelCounts: {'low': 0, 'moderate': 0, 'high': 0},
       ),
     );
-
-    final levelText = todaySummary.dominantLevel == TremorLevel.low
-        ? 'Low'
-        : todaySummary.dominantLevel == TremorLevel.moderate
-            ? 'Moderate'
-            : 'High';
-
     final counts = todaySummary.tremorLevelCounts ?? {'low': 0, 'moderate': 0, 'high': 0};
-    final totalEvents = counts['low']! + counts['moderate']! + counts['high']!;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Daily Insight Card
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F9FF),
-            borderRadius: BorderRadius.circular(12),
-            border: const Border(
-              left: BorderSide(color: WellnessColors.primaryBlue, width: 4),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '💡 Daily Insight',
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: WellnessColors.primaryBlue,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                totalEvents > 0
-                    ? 'Your tremor level was mostly $levelText today. $totalEvents tremor events recorded.'
-                    : 'No tremor data recorded today.',
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  color: const Color(0xFF334155),
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // Tremor Level Distribution
-        Text(
-          'Tremor Level Distribution',
-          style: GoogleFonts.outfit(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: WellnessColors.getTextPrimary(context),
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        TremorBreakdownChart(
-          lowCount: counts['low']!,
-          moderateCount: counts['moderate']!,
-          highCount: counts['high']!,
-        ),
-
-        const SizedBox(height: 24),
-
-        // Current Metrics Card
         TremorCharts(
           metrics: controller.tremor,
           onViewHistory: () {
-            Navigator.of(context).push(
+             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => TremorHistoryPage(
                   controller: controller,
@@ -568,54 +238,69 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
             );
           },
         ),
+        const SizedBox(height: 24),
+        TremorBreakdownChart(
+          lowCount: counts['low']!,
+          moderateCount: counts['moderate']!,
+          highCount: counts['high']!,
+        ),
       ],
     );
   }
 
   Widget _buildTemperatureTab() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: WellnessColors.getCardColor(context),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: WellnessColors.getBorderColor(context)),
-      ),
+    return PremiumGlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Temperature Control',
-            style: GoogleFonts.outfit(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: WellnessColors.getTextPrimary(context),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Temperature Control',
+                style: GoogleFonts.manrope(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const Icon(Icons.thermostat, color: AppTheme.rose),
+            ],
           ),
           const SizedBox(height: 16),
           Text(
             'Access full temperature controls and heater settings.',
-            style: GoogleFonts.outfit(
+            style: GoogleFonts.manrope(
               fontSize: 14,
-              color: WellnessColors.getTextSecondary(context),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const HeaterControlPage(),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const HeaterControlPage(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.emerald,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              );
-            },
-            icon: const Icon(Icons.thermostat),
-            label: const Text('Open Heater Control'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: WellnessColors.primaryBlue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                elevation: 0,
+              ),
+              child: Text(
+                'Open Heater Control',
+                style: GoogleFonts.manrope(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
             ),
           ),

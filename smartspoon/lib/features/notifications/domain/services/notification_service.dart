@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:smartspoon/core/config/app_config.dart';
-import '../../../auth/domain/services/auth_service.dart';
+import 'package:smartspoon/features/auth/domain/services/auth_service.dart';
+import 'package:smartspoon/main.dart'; // Import navigatorKey
 
 /// Top-level function for handling background messages
 @pragma('vm:entry-point')
@@ -26,13 +30,21 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  Completer<void>? _initCompleter;
   String? _fcmToken;
 
   final String _baseUrl = AppConfig.apiBaseUrl;
 
-  /// Initialize notification service
+  /// Initialize notification service.
+  /// Concurrent callers wait for the same initialization — only one runs.
   Future<void> initialize() async {
     if (_initialized) return;
+
+    // If init is already in progress, wait for it instead of running again.
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+    _initCompleter = Completer<void>();
 
     try {
       // Register background message handler
@@ -56,8 +68,9 @@ class NotificationService {
       // Initialize local notifications
       await _initializeLocalNotifications();
 
-      // Get FCM token
-      _fcmToken = await _fcm.getToken();
+      // Get FCM token — on iOS the APNs token may not be ready immediately,
+      // so we retry a few times with a short delay before giving up.
+      _fcmToken = await _getFcmTokenSafely();
       if (kDebugMode) print('FCM Token: $_fcmToken');
 
       // Register token with backend
@@ -85,9 +98,36 @@ class NotificationService {
 
       _initialized = true;
       if (kDebugMode) print('NotificationService initialized');
+      _initCompleter!.complete();
     } catch (e) {
       if (kDebugMode) print('Error initializing NotificationService: $e');
+      _initCompleter!.completeError(e);
+      _initCompleter = null; // Allow retry on next call if init failed
     }
+  }
+
+  /// Safely get the FCM token, retrying on iOS if APNs token isn't ready yet.
+  Future<String?> _getFcmTokenSafely() async {
+    // On iOS the APNs token is registered asynchronously after app launch.
+    // Calling getToken() before it's ready throws apns-token-not-set.
+    // We retry up to 6 times with exponential backoff (2s, 4s, 8s, 16s, 32s, 32s).
+    final maxAttempts = Platform.isIOS ? 6 : 2;
+    for (int i = 0; i < maxAttempts; i++) {
+      try {
+        final token = await _fcm.getToken();
+        if (token != null) return token;
+      } catch (e) {
+        if (kDebugMode) print('FCM token attempt ${i + 1} failed: $e');
+      }
+      if (i < maxAttempts - 1) {
+        // Exponential backoff: 2s, 4s, 8s, 16s, 32s (capped)
+        final delaySeconds = (2 << i).clamp(2, 32);
+        await Future.delayed(Duration(seconds: delaySeconds));
+      }
+    }
+    // Token unavailable right now — onTokenRefresh listener above will deliver it later
+    if (kDebugMode) print('FCM token unavailable after $maxAttempts attempts — relying on onTokenRefresh');
+    return null;
   }
 
   /// Initialize local notifications
@@ -172,15 +212,17 @@ class NotificationService {
   Future<void> _registerFCMToken(String token) async {
     try {
       final authToken = await AuthService.getValidToken();
+      
+      // If no auth token (user not logged in), we can't register the FCM token yet.
+      // This is expected during onboarding/login screens.
       if (authToken == null) {
-          if (kDebugMode) print('No auth token available to register FCM token');
+          if (kDebugMode) print('ℹ️ User not logged in. Skipping FCM token registration.');
           return;
       }
 
-      // Note: Assuming /api/notifications/fcm-token is the correct endpoint based on existing code.
-      // If 404, check backend routes.
       final url = Uri.parse('$_baseUrl/notifications/fcm-token');
       if (kDebugMode) print('Registering FCM Token at: $url');
+      
       final response = await http.post(
         url,
         headers: {
@@ -190,13 +232,13 @@ class NotificationService {
         body: jsonEncode({'fcm_token': token}),
       );
 
-      if (response.statusCode == 200) {
-        if (kDebugMode) print('FCM token registered successfully');
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (kDebugMode) print('✅ FCM token registered successfully');
       } else {
-        if (kDebugMode) print('Failed to register FCM token: ${response.statusCode} - ${response.body}');
+        if (kDebugMode) print('⚠️ Failed to register FCM token: ${response.statusCode} - ${response.body}');
       }
     } catch (e, stackTrace) {
-      if (kDebugMode) print('Error registering FCM token: $e\n$stackTrace');
+      if (kDebugMode) print('❌ Error registering FCM token: $e\n$stackTrace');
     }
   }
 
@@ -258,6 +300,48 @@ class NotificationService {
     );
   }
 
+  /// Explicitly show a local alert from any service
+  Future<void> showLocalAlert({
+    required String title,
+    required String body,
+    String type = 'default',
+    String priority = 'DEFAULT',
+    Map<String, dynamic>? data,
+  }) async {
+    final channelId = _getChannelId(type);
+
+    AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      channelId,
+      _getChannelName(channelId),
+      importance: priority == 'CRITICAL' || priority == 'HIGH'
+          ? Importance.high
+          : Importance.defaultImportance,
+      priority: priority == 'CRITICAL' || priority == 'HIGH'
+          ? Priority.high
+          : Priority.defaultPriority,
+      playSound: priority == 'CRITICAL' || priority == 'HIGH',
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _localNotifications.show(
+      DateTime.now().millisecond,
+      title,
+      body,
+      details,
+      payload: data != null ? jsonEncode(data) : null,
+    );
+  }
+
   /// Handle notification tap (from background/terminated state)
   void _handleNotificationTap(RemoteMessage message) {
     if (kDebugMode) print('Notification tapped: ${message.messageId}');
@@ -312,7 +396,6 @@ class NotificationService {
     // For now, we'll just log the action. Implement navigation when GlobalKey is available.
     
     // Example implementation (uncomment when GlobalKey is set up):
-    /*
     final context = navigatorKey.currentContext;
     if (context == null) return;
     
@@ -333,18 +416,19 @@ class NotificationService {
         Navigator.of(context).pushNamed('/insights');
         break;
       case 'open_tremor_analysis':
-        Navigator.of(context).pushNamed('/tremor-analysis', arguments: parsedData);
+        // Note: Assuming routes are set up or using direct push
+        // Navigator.of(context).pushNamed('/tremor-analysis', arguments: parsedData);
+        if (kDebugMode) print('Navigating to tremor analysis with $parsedData');
         break;
       case 'open_temperature':
-        Navigator.of(context).pushNamed('/temperature', arguments: parsedData);
+        // Navigator.of(context).pushNamed('/temperature', arguments: parsedData);
         break;
       case 'open_profile':
-        Navigator.of(context).pushNamed('/profile');
+        // Navigator.of(context).pushNamed('/profile');
         break;
       default:
         if (kDebugMode) print('Unknown action type: $actionType');
     }
-    */
   }
 
   /// Get channel ID based on notification type
@@ -386,12 +470,17 @@ class NotificationService {
       final authToken = await AuthService.getValidToken();
       if (authToken == null) return;
 
-      await http.post(
-        Uri.parse('$_baseUrl/notifications/$notificationId/opened'),
+      final url = Uri.parse('$_baseUrl/notifications/$notificationId/opened');
+      final response = await http.post(
+        url,
         headers: {'Authorization': 'Bearer $authToken'},
       );
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (kDebugMode) print('✅ Notification $notificationId marked as opened');
+      }
     } catch (e) {
-      if (kDebugMode) print('Error marking notification opened: $e');
+      if (kDebugMode) print('❌ Error marking notification opened: $e');
     }
   }
 
@@ -401,12 +490,17 @@ class NotificationService {
       final authToken = await AuthService.getValidToken();
       if (authToken == null) return;
 
-      await http.post(
-        Uri.parse('$_baseUrl/notifications/$notificationId/action'),
+      final url = Uri.parse('$_baseUrl/notifications/$notificationId/action');
+      final response = await http.post(
+        url,
         headers: {'Authorization': 'Bearer $authToken'},
       );
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (kDebugMode) print('✅ Notification $notificationId action recorded');
+      }
     } catch (e) {
-      if (kDebugMode) print('Error marking notification action: $e');
+      if (kDebugMode) print('❌ Error marking notification action: $e');
     }
   }
 

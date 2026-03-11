@@ -5,8 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:smartspoon/features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'package:smartspoon/features/home/index.dart';
 import 'package:smartspoon/features/auth/index.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:smartspoon/firebase_options.dart';
 import 'package:smartspoon/features/devices/index.dart';
 import 'package:flutter/foundation.dart';
 
@@ -62,17 +60,9 @@ class _SplashScreenState extends State<SplashScreen>
     final minDelay = Future<void>.delayed(const Duration(milliseconds: 1500));
 
     try {
-      // 1. Initialize Firebase
-      final options = DefaultFirebaseOptions.currentPlatform;
-      if (kIsWeb &&
-          (options.appId.isEmpty || options.appId.contains('PLACEHOLDER'))) {
-        debugPrint('Skipping Firebase init on web (placeholder)');
-      } else {
-        await Firebase.initializeApp(options: options);
-        debugPrint('✅ Firebase initialized');
-      }
+      // Firebase is already initialized in main() — no need to call again.
 
-      // 2. Initialize BLE
+      // Initialize BLE
       final bleService = BleService();
       await bleService.initialize();
       // Auto-connect in background (subscription will happen in app initialization)
@@ -163,7 +153,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     child: const Icon(
                       Icons.ramen_dining,
-                      color: Colors.white,
+                      color: const Color(0xFF0F172A),
                       size: 80,
                     ),
                   ),
@@ -173,11 +163,12 @@ class _SplashScreenState extends State<SplashScreen>
               FadeTransition(
                 opacity: _fadeAnimation,
                 child: Text(
-                  'i-Spoon',
-                  style: GoogleFonts.lato(
-                    fontSize: 36,
+                  'Smart Spoon',
+                  style: GoogleFonts.manrope(
+                    fontSize: 40,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
+                    letterSpacing: -1,
                   ),
                 ),
               ),

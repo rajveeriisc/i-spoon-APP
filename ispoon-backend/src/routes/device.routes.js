@@ -1,22 +1,14 @@
 import express from "express";
 import { protect } from "../middleware/authMiddleware.js";
-import {
-    registerDevice,
-    startDeviceSession,
-    finishDeviceSession,
-    recordHealth,
-    updateSettings,
-    getUserDevices,
-} from "../controllers/deviceController.js";
+import deviceController from "../controllers/deviceController.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { registerDeviceSchema, updateDeviceSettingsSchema } from "../validators/device.schema.js";
 
 const router = express.Router();
 
 // All device routes require authentication
-router.get("/user-devices", protect, getUserDevices);
-router.post("/register", protect, registerDevice);
-router.post("/sessions", protect, startDeviceSession);
-router.patch("/sessions/:sessionId", protect, finishDeviceSession);
-router.post("/health", protect, recordHealth);
-router.patch("/user-devices/:userDeviceId/settings", protect, updateSettings);
+router.get("/user-devices", protect, deviceController.getUserDevices);
+router.post("/register", protect, validateRequest(registerDeviceSchema), deviceController.registerDevice);
+router.patch("/:deviceId/settings", protect, validateRequest(updateDeviceSettingsSchema), deviceController.updateSettings);
 
 export default router;

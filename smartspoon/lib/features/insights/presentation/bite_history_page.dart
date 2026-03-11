@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../insights/application/insights_controller.dart';
 import '../../insights/domain/models.dart';
-import 'theme/wellness_colors.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
 
 class BiteHistoryPage extends StatefulWidget {
-  const BiteHistoryPage({super.key, required this.summaries});
-
-  final List<DailyBiteSummary> summaries;
+  const BiteHistoryPage({super.key});
 
   @override
   State<BiteHistoryPage> createState() => _BiteHistoryPageState();
@@ -17,20 +17,24 @@ class BiteHistoryPage extends StatefulWidget {
 
 class _BiteHistoryPageState extends State<BiteHistoryPage> {
   int _selectedDays = 7; // Default to 7 days
+  String _selectedMeal = 'All';
 
   @override
   Widget build(BuildContext context) {
+    // Watch daily summaries directly from controller so live updates rebuild the page
+    final controller = context.watch<InsightsController>();
+    
     // Sort summaries by date
-    final sorted = [...widget.summaries]
+    final sorted = [...controller.dailySummaries]
       ..sort((a, b) => a.date.compareTo(b.date));
     
     final now = sorted.isEmpty ? DateTime.now() : sorted.last.date;
     
     // Compute aggregates for selected range
-    final display = _computeAggregates(sorted, now, _selectedDays);
+    final display = _computeAggregates(sorted, now, _selectedDays, _selectedMeal);
 
     return Scaffold(
-      backgroundColor: WellnessColors.getBackground(context),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           'Eating Patterns',
@@ -38,7 +42,7 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: WellnessColors.getBackground(context),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -55,48 +59,33 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
             
             const SizedBox(height: 24),
             
-            // Time Range Dropdown (moved here, above table)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Daily Breakdown',
-                  style: GoogleFonts.outfit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: WellnessColors.getTextPrimary(context),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: WellnessColors.primaryBlue.withValues(alpha: 0.3)),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<int>(
-                      value: _selectedDays,
-                      isDense: true,
-                      icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: WellnessColors.primaryBlue),
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        color: WellnessColors.getTextPrimary(context),
-                        fontWeight: FontWeight.w500,
+            // Time Range & Meal Dropdowns
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isSmall = constraints.maxWidth < 600;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isSmall)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildHeaderTitle(context),
+                          _buildDropdownsRow(context),
+                        ],
+                      )
+                    else ...[
+                      _buildHeaderTitle(context),
+                      const SizedBox(height: 12),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: _buildDropdownsRow(context),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 7, child: Text('Last 7 Days')),
-                        DropdownMenuItem(value: 30, child: Text('1 Month')),
-                        DropdownMenuItem(value: 60, child: Text('2 Months')),
-                        DropdownMenuItem(value: 90, child: Text('3 Months')),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedDays = val);
-                      },
-                    ),
-                  ),
-                ),
-              ],
+                    ],
+                  ],
+                );
+              },
             ),
             
             const SizedBox(height: 12),
@@ -104,13 +93,95 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
             // Data Table
             _BiteDataTable(entries: display.entries),
             
-            const SizedBox(height: 32),
             
-            // Report Request
-            _EmailRequestCard(days: _selectedDays),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildHeaderTitle(BuildContext context) {
+    return Text(
+      'Daily Breakdown',
+      style: GoogleFonts.outfit(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+    );
+  }
+
+  Widget _buildDropdownsRow(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Meal Selection Dropdown
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedMeal,
+              isDense: true,
+              icon: Icon(Icons.keyboard_arrow_down,
+                  size: 18, color: AppTheme.emerald),
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w500,
+              ),
+              items: ['All', 'Breakfast', 'Lunch', 'Snacks', 'Dinner']
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedMeal = val);
+                }
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Date Range Dropdown
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedDays,
+              isDense: true,
+              icon: Icon(Icons.keyboard_arrow_down,
+                  size: 18, color: AppTheme.emerald),
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w500,
+              ),
+              items: const [
+                DropdownMenuItem(value: 7, child: Text('Last 7 Days')),
+                DropdownMenuItem(value: 30, child: Text('1 Month')),
+                DropdownMenuItem(value: 60, child: Text('2 Months')),
+                DropdownMenuItem(value: 90, child: Text('3 Months')),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedDays = val);
+                }
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -118,6 +189,7 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
     List<DailyBiteSummary> summaries,
     DateTime end,
     int days,
+    String selectedMeal,
   ) {
     final start = end.subtract(Duration(days: days - 1));
     final range = summaries
@@ -150,8 +222,26 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
       });
     }
 
+    final List<_MealEntry> flatEntries = [];
+    for (var day in range.reversed) { // Show newest first
+      if (selectedMeal == 'All') {
+        final sortedMeals = day.mealBites.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+        for (var meal in sortedMeals) {
+          if (meal.value > 0) {
+            flatEntries.add(_MealEntry(day.date, meal.key, meal.value));
+          }
+        }
+      } else {
+        final bites = day.mealBites[selectedMeal] ?? 0;
+        if (bites > 0) {
+          flatEntries.add(_MealEntry(day.date, selectedMeal, bites));
+        }
+      }
+    }
+
     return _BiteAggregate(
-      entries: range.reversed.toList(), // Show newest first in table
+      entries: flatEntries,
       totalBites: totalBites,
       totalDuration: totalDuration,
       avgPace: avgPace,
@@ -159,6 +249,13 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
       mealBites: mealAgg,
     );
   }
+}
+
+class _MealEntry {
+  final DateTime date;
+  final String mealName;
+  final int bites;
+  const _MealEntry(this.date, this.mealName, this.bites);
 }
 
 class _BiteAggregate {
@@ -171,7 +268,7 @@ class _BiteAggregate {
     required this.mealBites,
   });
 
-  final List<DailyBiteSummary> entries;
+  final List<_MealEntry> entries;
   final int totalBites;
   final double totalDuration;
   final double avgPace;
@@ -194,8 +291,8 @@ class _OverviewStrip extends StatelessWidget {
             title: 'Period Total',
             value: '${aggregate.totalBites}',
             unit: 'total bites',
-            subtitle: 'Avg ${(aggregate.totalBites / days).toStringAsFixed(1)}/day',
-            color: WellnessColors.primaryBlue,
+            subtitle: 'Avg ${(days > 0 ? (aggregate.totalBites / days) : 0).toStringAsFixed(1)}/day',
+            color: AppTheme.emerald,
             icon: Icons.analytics,
           ),
         ),
@@ -203,10 +300,10 @@ class _OverviewStrip extends StatelessWidget {
         Expanded(
           child: _OverviewTile(
             title: 'Avg Pace',
-            value: '${aggregate.avgPace.toStringAsFixed(1)}s',
-            unit: 'seconds/bite',
+            value: aggregate.avgPace.isNaN ? '0.0' : aggregate.avgPace.toStringAsFixed(1),
+            unit: 'bites/min',
             subtitle: 'Average over $days days',
-            color: WellnessColors.primaryGreen,
+            color: AppTheme.emerald,
             icon: Icons.timer,
           ),
         ),
@@ -230,77 +327,89 @@ class _MealBreakdownChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: WellnessColors.getCardColor(context),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: WellnessColors.getBorderColor(context)),
+        border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'Meal Distribution',
             style: GoogleFonts.outfit(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: WellnessColors.getTextPrimary(context),
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 20),
-          ...meals.map((meal) {
-            final double percentage = total == 0 ? 0 : (meal.value / total) * 100;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        meal.key,
-                        style: GoogleFonts.outfit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: WellnessColors.getTextSecondary(context),
+          if (total == 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text(
+                'No meal data available for this period.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            )
+          else
+            ...meals.map((meal) {
+              final double percentage = (meal.value / total) * 100;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          meal.key,
+                          style: GoogleFonts.outfit(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
                         ),
-                      ),
-                      Text(
-                        '${meal.value} bites (${percentage.toStringAsFixed(0)}%)',
-                        style: GoogleFonts.outfit(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: WellnessColors.primaryBlue,
+                        Text(
+                          '${meal.value} bites (${percentage.toStringAsFixed(0)}%)',
+                          style: GoogleFonts.outfit(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.emerald,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Stack(
-                    children: [
-                      Container(
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: WellnessColors.getBorderColor(context).withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: percentage / 100,
-                        child: Container(
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Stack(
+                      children: [
+                        Container(
                           height: 10,
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [WellnessColors.primaryBlue, WellnessColors.primaryBlue.withValues(alpha: 0.6)],
-                            ),
+                            color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(5),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+                        FractionallySizedBox(
+                          widthFactor: percentage / 100,
+                          child: Container(
+                            height: 10,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [AppTheme.emerald, AppTheme.emerald.withValues(alpha: 0.6)],
+                              ),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -329,12 +438,12 @@ class _OverviewTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: WellnessColors.getCardColor(context),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: WellnessColors.getBorderColor(context)),
+        border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -350,7 +459,7 @@ class _OverviewTile extends StatelessWidget {
                 title,
                 style: GoogleFonts.outfit(
                   fontSize: 13, 
-                  color: WellnessColors.getTextSecondary(context),
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -370,7 +479,7 @@ class _OverviewTile extends StatelessWidget {
             unit,
             style: GoogleFonts.outfit(
               fontSize: 12,
-              color: WellnessColors.getTextMuted(context),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
             ),
           ),
           const SizedBox(height: 8),
@@ -398,86 +507,38 @@ class _OverviewTile extends StatelessWidget {
 class _BiteDataTable extends StatelessWidget {
   const _BiteDataTable({required this.entries});
 
-  final List<DailyBiteSummary> entries;
+  final List<_MealEntry> entries;
 
   @override
   Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No meal data for this period.',
+            style: GoogleFonts.outfit(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      );
+    }
+
     final dateFmt = DateFormat.MMMd();
-    
-    // Sort columns
     final columns = [
-      DataColumn(
-        label: Text('Date', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-      ),
-      DataColumn(
-        label: Text('Break\nfast', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        numeric: true,
-      ),
-      DataColumn(
-        label: Text('Lunch', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        numeric: true,
-      ),
-      DataColumn(
-        label: Text('Dinner', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        numeric: true,
-      ),
-      DataColumn(
-        label: Text('Snacks', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        numeric: true,
-      ),
-      DataColumn(
-        label: Text('Total\nBites', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        numeric: true,
-      ),
-      DataColumn(
-        label: Text('Total\nTime', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        numeric: true,
-      ),
-      DataColumn(
-        label: Text('Pace', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        numeric: true,
-      ),
+      const DataColumn(label: Text('Date')),
+      const DataColumn(label: Text('Meal')),
+      const DataColumn(label: Text('Bites')),
     ];
 
     final rows = entries
         .map(
           (entry) => DataRow(
             cells: [
-              DataCell(
-                Text(
-                  dateFmt.format(entry.date),
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.w500),
-                ),
-              ),
-              DataCell(Text('${entry.mealBites['Breakfast'] ?? 0}', style: GoogleFonts.outfit())),
-              DataCell(Text('${entry.mealBites['Lunch'] ?? 0}', style: GoogleFonts.outfit())),
-              DataCell(Text('${entry.mealBites['Dinner'] ?? 0}', style: GoogleFonts.outfit())),
-              DataCell(Text('${entry.mealBites['Snacks'] ?? 0}', style: GoogleFonts.outfit())),
-              DataCell(
-                Text(
-                  entry.totalBites.toString(),
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataCell(
-                Text(
-                  '${entry.totalDurationMin.toStringAsFixed(1)}m',
-                  style: GoogleFonts.outfit(),
-                ),
-              ),
-              DataCell(
-                Text(
-                  '${entry.avgPaceBpm.toStringAsFixed(1)}s',
-                  style: GoogleFonts.outfit(
-                    color: entry.avgPaceBpm > 5 
-                        ? WellnessColors.primaryGreen 
-                        : (entry.avgPaceBpm < 2 
-                            ? WellnessColors.warmRed 
-                            : WellnessColors.amber),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              DataCell(Text(dateFmt.format(entry.date))),
+              DataCell(Text(entry.mealName)),
+              DataCell(Text(entry.bites.toString())),
             ],
           ),
         )
@@ -487,11 +548,8 @@ class _BiteDataTable extends StatelessWidget {
       builder: (context, constraints) {
         final table = DataTable(
           headingRowColor: WidgetStateProperty.all(
-            WellnessColors.primaryBlue.withValues(alpha: 0.05),
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
           ),
-          columnSpacing: 20,
-          horizontalMargin: 20,
-          dividerThickness: 0.5,
           columns: columns,
           rows: rows,
         );
@@ -501,141 +559,19 @@ class _BiteDataTable extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 child: table,
               )
-            : SizedBox(width: double.infinity, child: table);
+            : table;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: WellnessColors.getCardColor(context),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: WellnessColors.getBorderColor(context)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(18),
             child: tableWidget,
           ),
         );
       },
-    );
-  }
-}
-
-class _EmailRequestCard extends StatelessWidget {
-  const _EmailRequestCard({required this.days});
-
-  final int days;
-
-  @override
-  Widget build(BuildContext context) {
-    String selectedLabel;
-    if (days <= 7) {
-      selectedLabel = 'this week';
-    } else if (days <= 30) selectedLabel = 'this month';
-    else if (days <= 90) selectedLabel = 'last 3 months';
-    else selectedLabel = 'selected period';
-        
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            WellnessColors.primaryBlue.withValues(alpha: 0.1),
-            WellnessColors.primaryGreen.withValues(alpha: 0.1),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: WellnessColors.primaryBlue.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.analytics_outlined, color: WellnessColors.primaryBlue),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Detailed Reports',
-                      style: GoogleFonts.outfit(
-                        fontSize: 16, 
-                        fontWeight: FontWeight.bold,
-                        color: WellnessColors.getTextPrimary(context),
-                      ),
-                    ),
-                    Text(
-                      'Get deeper insights via email',
-                      style: GoogleFonts.outfit(
-                        fontSize: 12,
-                        color: WellnessColors.getTextSecondary(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Request an export for $selectedLabel of eating pattern data, including detailed bite logs and heater usage stats.',
-            style: GoogleFonts.outfit(
-              fontSize: 14,
-              color: WellnessColors.getTextSecondary(context),
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Report requested. Check your email shortly.',
-                      style: GoogleFonts.outfit(),
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                    backgroundColor: WellnessColors.primaryBlue,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.email_outlined, size: 18),
-              label: Text(
-                'Request Email Report',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: WellnessColors.primaryBlue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

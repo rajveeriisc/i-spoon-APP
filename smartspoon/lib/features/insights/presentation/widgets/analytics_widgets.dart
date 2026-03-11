@@ -1,79 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../theme/wellness_colors.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/premium_widgets.dart';
 
-/// Hero Header with gradient background
-class HeroHeader extends StatelessWidget {
-  final String greeting;
-  final String subtitle;
-  final VoidCallback? onRefresh;
-
-  const HeroHeader({
-    super.key,
-    required this.greeting,
-    this.subtitle = 'Your Wellness Insights',
-    this.onRefresh,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [WellnessColors.primaryBlue, WellnessColors.primaryGreen],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-      ),
-      padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                greeting,
-                style: GoogleFonts.outfit(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  color: Colors.white.withValues(alpha: 0.9),
-                ),
-              ),
-            ],
-          ),
-          if (onRefresh != null)
-            GestureDetector(
-              onTap: onRefresh,
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.sync, color: Colors.white, size: 20),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Combined Metric Card - 2 column layout
+/// Combined Metric Card - 2 column layout using PremiumGlassCard
 class CombinedMetricCard extends StatelessWidget {
   final MetricData metric1;
   final MetricData metric2;
@@ -86,19 +16,7 @@ class CombinedMetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: WellnessColors.getCardColor(context),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: WellnessColors.getBorderColor(context)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            offset: const Offset(0, 2),
-            blurRadius: 4,
-          ),
-        ],
-      ),
+    return PremiumGlassCard(
       child: IntrinsicHeight(
         child: Row(
           children: [
@@ -114,7 +32,7 @@ class CombinedMetricCard extends StatelessWidget {
             ),
             Container(
               width: 1,
-              color: WellnessColors.getBorderColor(context).withValues(alpha: 0.5),
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
             ),
             Expanded(
               child: InkWell(
@@ -151,30 +69,33 @@ class _MetricItem extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(data.icon, style: const TextStyle(fontSize: 24)),
+              Text(
+                data.icon,
+                style: const TextStyle(fontSize: 24),
+              ),
               if (data.trend != null) _buildTrendBadge(data.trend!),
             ],
           ),
           const SizedBox(height: 8),
-          
+
           // Value and title
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 data.value,
-                style: GoogleFonts.outfit(
-                  fontSize: 32,
+                style: GoogleFonts.manrope(
+                  fontSize: 28, // Slightly smaller to fit glass card
                   fontWeight: FontWeight.bold,
-                  color: data.color,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 data.title,
-                style: GoogleFonts.outfit(
+                style: GoogleFonts.manrope(
                   fontSize: 13,
-                  color: WellnessColors.getTextSecondary(context),
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -182,19 +103,19 @@ class _MetricItem extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   data.subtitle!,
-                  style: GoogleFonts.outfit(
+                  style: GoogleFonts.manrope(
                     fontSize: 11,
-                    color: WellnessColors.getTextMuted(context),
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
                 ),
               ],
             ],
           ),
-          
+
           // Progress bar (if applicable)
           if (data.progress != null) ...[
             const SizedBox(height: 12),
-            _buildProgressBar(data.progress!, data.color),
+            _buildProgressBar(context, data.progress!, data.color),
           ],
         ],
       ),
@@ -202,19 +123,22 @@ class _MetricItem extends StatelessWidget {
   }
 
   Widget _buildTrendBadge(MetricTrend trend) {
-    final color = trend.direction == 'up' 
-        ? WellnessColors.primaryGreen 
-        : WellnessColors.sunsetOrange;
-    
+    // Green for up, Red for down/bad, usually. Assuming 'up' is good for bites?
+    // Actually typically 'up' is green.
+    final color = trend.direction == 'up'
+        ? AppTheme.emerald
+        : AppTheme.rose;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(6),
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         '${trend.direction == 'up' ? '↗' : '↘'} ${trend.value}%',
-        style: GoogleFonts.outfit(
+        style: GoogleFonts.manrope(
           color: color,
           fontSize: 10,
           fontWeight: FontWeight.w700,
@@ -223,11 +147,11 @@ class _MetricItem extends StatelessWidget {
     );
   }
 
-  Widget _buildProgressBar(double progress, Color color) {
+  Widget _buildProgressBar(BuildContext context, double progress, Color color) {
     return Container(
       height: 6,
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(3),
       ),
       child: FractionallySizedBox(
@@ -239,6 +163,12 @@ class _MetricItem extends StatelessWidget {
               colors: [color, color.withValues(alpha: 0.6)],
             ),
             borderRadius: BorderRadius.circular(3),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.4),
+                blurRadius: 4,
+              ),
+            ],
           ),
         ),
       ),
@@ -294,19 +224,19 @@ class SectionTitle extends StatelessWidget {
       children: [
         Text(
           title,
-          style: GoogleFonts.outfit(
-            fontSize: 18,
+          style: GoogleFonts.manrope(
+            fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: WellnessColors.getTextPrimary(context),
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
         if (subtitle != null) ...[
           const SizedBox(height: 4),
           Text(
             subtitle!,
-            style: GoogleFonts.outfit(
-              fontSize: 12,
-              color: WellnessColors.getTextSecondary(context),
+            style: GoogleFonts.manrope(
+              fontSize: 14,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -336,55 +266,49 @@ class AIInsightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: WellnessColors.getCardColor(context),
-        borderRadius: BorderRadius.circular(12),
-        border: Border(
-          left: BorderSide(color: accentColor, width: 4),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            offset: const Offset(0, 2),
-            blurRadius: 4,
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(16),
+    return PremiumGlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                type.toUpperCase(),
-                style: GoogleFonts.outfit(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: accentColor,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: accentColor.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  type.toUpperCase(),
+                  style: GoogleFonts.manrope(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: accentColor,
+                  ),
                 ),
               ),
-              const Text('⭐', style: TextStyle(fontSize: 16)),
+              Icon(Icons.auto_awesome, color: accentColor, size: 16),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
             title,
-            style: GoogleFonts.outfit(
+            style: GoogleFonts.manrope(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: WellnessColors.getTextPrimary(context),
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             message,
-            style: GoogleFonts.outfit(
+            style: GoogleFonts.manrope(
               fontSize: 14,
-              color: WellnessColors.getTextSecondary(context),
-              height: 1.4,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+              height: 1.5,
             ),
           ),
           if (onAction != null || onLearnMore != null) ...[
@@ -393,6 +317,7 @@ class AIInsightCard extends StatelessWidget {
               children: [
                 if (onAction != null)
                   _buildActionButton(
+                    context,
                     'Take Action',
                     accentColor,
                     onAction!,
@@ -402,8 +327,9 @@ class AIInsightCard extends StatelessWidget {
                   const SizedBox(width: 12),
                 if (onLearnMore != null)
                   _buildActionButton(
+                    context,
                     'Learn More',
-                    accentColor,
+                    Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                     onLearnMore!,
                     isPrimary: false,
                   ),
@@ -416,6 +342,7 @@ class AIInsightCard extends StatelessWidget {
   }
 
   Widget _buildActionButton(
+    BuildContext context,
     String label,
     Color color,
     VoidCallback onTap, {
@@ -426,16 +353,18 @@ class AIInsightCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isPrimary ? color : Colors.transparent,
+          color: isPrimary ? color.withValues(alpha: 0.2) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: isPrimary ? null : Border.all(color: color),
+          border: Border.all(
+            color: isPrimary ? color : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+          ),
         ),
         child: Text(
           label,
-          style: GoogleFonts.outfit(
+          style: GoogleFonts.manrope(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: isPrimary ? Colors.white : color,
+            color: isPrimary ? color : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ),

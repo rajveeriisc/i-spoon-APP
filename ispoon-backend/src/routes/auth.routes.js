@@ -21,8 +21,8 @@ router.post("/firebase/verify", verifyFirebaseToken);
 // Request email verification (triggers Firebase to send verification email)
 router.post("/firebase/request-email-verification", requestEmailVerification);
 
-// Logout - revoke refresh token
-router.post("/logout", async (req, res) => {
+// Logout - revoke refresh token (requires valid JWT so only auth'd users can revoke)
+router.post("/logout", protect, async (req, res) => {
     try {
         const refreshToken = req.body?.refreshToken || req.headers["x-refresh-token"];
         if (refreshToken) {

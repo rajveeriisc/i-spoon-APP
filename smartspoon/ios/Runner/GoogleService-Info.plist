@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>129116938699-l25ja5eg9mckjh9vnegpt2h54r7onctn.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.129116938699-l25ja5eg9mckjh9vnegpt2h54r7onctn</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>129116938699-0kkfkjmjcut3jj13v9a45nvj61tn5rra.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyD-HMf9KZuO1aowSFZGS1uD1rfdSbfJTPE</string>
+	<key>GCM_SENDER_ID</key>
+	<string>129116938699</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>ispoon</string>
+	<key>PROJECT_ID</key>
+	<string>i-spoon-auth</string>
+	<key>STORAGE_BUCKET</key>
+	<string>i-spoon-auth.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:129116938699:ios:e4473d913c0cd9624e564e</string>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+</dict>
+</plist>

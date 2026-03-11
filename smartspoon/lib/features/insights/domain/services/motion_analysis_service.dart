@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:smartspoon/features/devices/index.dart';
+import 'package:smartspoon/features/devices/domain/services/tremor_detection_service.dart';
 
 /// Tremor features extracted from a packet of IMU data
 class TremorFeatures {
@@ -34,8 +35,25 @@ class MealSession {
 
   Duration get duration => (endTime ?? DateTime.now()).difference(startTime);
 
+  /// Per-bite tremor results from the optimized frame-based detector
+  final List<TremorResult> perBiteTremorResults = [];
+
   /// Calculate final tremor index from accumulated features
   Map<String, double> calculateTremorIndex() {
+    // Prefer per-bite results from the optimized frame-based detector
+    if (perBiteTremorResults.isNotEmpty) {
+      final detected = perBiteTremorResults.where((r) => r.detected).toList();
+      if (detected.isNotEmpty) {
+        double avgScore = detected.map((r) => r.score).reduce((a, b) => a + b) / detected.length;
+        double maxScore = detected.map((r) => r.score).reduce(max);
+        // Normalize scores to 0–3 scale (log power typically ranges -10 to +5)
+        double avgNorm = ((avgScore + 10) / 15 * 3).clamp(0.0, 3.0);
+        double maxNorm = ((maxScore + 10) / 15 * 3).clamp(0.0, 3.0);
+        return {'avg': avgNorm, 'max': maxNorm};
+      }
+    }
+
+    // Fallback: use old variance/RMS features
     if (tremorFeatures.isEmpty) {
       return {'avg': 0.0, 'max': 0.0};
     }
@@ -45,8 +63,6 @@ class MealSession {
     double avgRms = tremorFeatures.map((f) => f.rms).reduce((a, b) => a + b) / tremorFeatures.length;
     double maxRms = tremorFeatures.map((f) => f.rms).reduce(max);
 
-    // Normalize to 0-3 scale (these thresholds may need tuning based on real data)
-    // Higher variance/RMS = more tremor
     double avgTremorIndex = _normalizeTremorValue(avgVariance * 0.6 + avgRms * 0.4);
     double maxTremorIndex = _normalizeTremorValue(maxVariance * 0.6 + maxRms * 0.4);
 
@@ -68,6 +84,19 @@ class MealSession {
 
   /// Get rolling average tremor for last N packets (for interim display)
   double getRollingTremorAverage({int lastNPackets = 5}) {
+    // Prefer per-bite results
+    if (perBiteTremorResults.isNotEmpty) {
+      final detected = perBiteTremorResults.where((r) => r.detected).toList();
+      if (detected.isNotEmpty) {
+        final recent = detected.length > lastNPackets
+            ? detected.sublist(detected.length - lastNPackets)
+            : detected;
+        double avgScore = recent.map((r) => r.score).reduce((a, b) => a + b) / recent.length;
+        return ((avgScore + 10) / 15 * 3).clamp(0.0, 3.0);
+      }
+    }
+
+    // Fallback: old variance/RMS
     if (tremorFeatures.isEmpty) return 0.0;
 
     final recentFeatures = tremorFeatures.length > lastNPackets

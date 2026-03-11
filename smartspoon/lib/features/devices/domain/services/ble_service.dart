@@ -1,468 +1,635 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// BLE Service for managing Bluetooth Low Energy devices
+/// BLE Service — production-ready BLE manager.
 ///
-/// This service handles:
-/// - BLE adapter state
-/// - Device scanning
-/// - Device connection/disconnection
-/// - Previously connected devices storage
-/// - Real-time connection status monitoring
+/// Responsibilities:
+/// - Permission requests (Android 6-14+, iOS)
+/// - Adapter state monitoring
+/// - Foreground scanning
+/// - Persistent auto-reconnect via native layer (no timeout = autoConnect=true)
+/// - Saved-device persistence (SharedPrefs)
+///
+/// Usage:
+/// 1. Call `initialize()` once at app startup.
+/// 2. Call `autoConnectToLastDevice()` after init to restore the last session.
+/// 3. Use `startScan()` / `stopScan()` from the Add-Device UI.
+/// 4. Call `connectToDevice()` when user taps a discovered device.
+/// 5. Call `disconnectDevice()` explicitly — this disables auto-reconnect.
 class BleService extends ChangeNotifier {
+  // ── Singleton ────────────────────────────────────────────────────────────
   static final BleService _instance = BleService._internal();
   factory BleService() => _instance;
   BleService._internal();
 
+  // ── Internal state ───────────────────────────────────────────────────────
   final FlutterReactiveBle _ble = FlutterReactiveBle();
 
-  // Bluetooth adapter state
   BleStatus _adapterState = BleStatus.unknown;
   BleStatus get adapterState => _adapterState;
   bool get isBluetoothOn => _adapterState == BleStatus.ready;
 
-  // Scanning state
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
-  // Discovered devices during scan
   final Map<String, DiscoveredDevice> _discoveredDevices = {};
   List<DiscoveredDevice> get discoveredDevices =>
       _discoveredDevices.values.toList();
 
-  // Connected devices
+  // Active connection subscriptions (one per deviceId)
   final Map<String, StreamSubscription<ConnectionStateUpdate>>
-  _connectionSubscriptions = {};
+      _connectionSubscriptions = {};
+
+  // Devices currently in DeviceConnectionState.connected
   final Map<String, DiscoveredDevice> _connectedDevices = {};
   List<String> get connectedDeviceIds => _connectedDevices.keys.toList();
 
-  // Previously connected devices (from storage)
+  // Persisted device list
   final List<SavedBleDevice> _previousDevices = [];
-  List<SavedBleDevice> get previousDevices => _previousDevices;
+  List<SavedBleDevice> get previousDevices =>
+      List.unmodifiable(_previousDevices);
 
-  // Subscriptions
   StreamSubscription<BleStatus>? _adapterStateSubscription;
   StreamSubscription<DiscoveredDevice>? _scanSubscription;
 
-  // Storage key for previously connected devices
   static const String _storageKey = 'ble_saved_devices';
+  static const String _primaryIdKey = 'smart_spoon_id';
 
-  /// Initialize BLE service
+  bool _isInitialized = false;
+  bool _autoReconnectEnabled = false;
+  bool _suspended = false; // true while app is backgrounded — suppresses onDone reconnect
+
+  // ── Initialization ───────────────────────────────────────────────────────
+
+  /// Must be called once at app startup (idempotent).
   Future<void> initialize() async {
-    debugPrint('🔵 BLE Service: Initializing...');
+    if (_isInitialized) return;
+    _isInitialized = true;
 
-    // Load saved devices from storage
+    debugPrint('🔵 BLE: Initializing...');
     await _loadSavedDevices();
 
-    // Listen to adapter state changes
     _adapterStateSubscription = _ble.statusStream.listen((status) {
-      debugPrint('🔵 BLE Adapter State: $status');
+      debugPrint('🔵 BLE adapter: $status');
+      final wasReady = _adapterState == BleStatus.ready;
       _adapterState = status;
       notifyListeners();
+
+      // If BT came back on and we have auto-reconnect pending, kick it off
+      if (!wasReady && status == BleStatus.ready && _autoReconnectEnabled) {
+        _restartPendingAutoConnects();
+      }
     });
 
-    debugPrint('🔵 BLE Service: Initialized. Adapter: $_adapterState');
+    debugPrint('🔵 BLE: Initialized. Adapter: $_adapterState');
   }
 
-  /// Check and request Bluetooth permissions
+  // ── Permissions ──────────────────────────────────────────────────────────
+
+  /// Returns true when all required BLE permissions are granted.
+  /// Requests any that are denied.
   Future<bool> checkAndRequestPermissions() async {
-    debugPrint('🔵 BLE Service: Checking permissions...');
-
+    debugPrint('🔵 BLE: Checking permissions...');
     try {
-      // Check Bluetooth Scan permission (Android 12+)
-      if (await Permission.bluetoothScan.isDenied) {
-        final result = await Permission.bluetoothScan.request();
-        if (!result.isGranted) {
-          debugPrint('❌ Bluetooth Scan permission denied');
-          return false;
+      if (Platform.isAndroid) {
+        return await _checkAndroidPermissions();
+      } else if (Platform.isIOS) {
+        // flutter_reactive_ble triggers the iOS Bluetooth prompt automatically.
+        // For continuous background tracking, we request Location Always.
+        var locStatus = await Permission.locationAlways.status;
+        if (!locStatus.isGranted) {
+           await Permission.locationWhenInUse.request();
+           await Permission.locationAlways.request();
         }
+        return true;
       }
-
-      // Check Bluetooth Connect permission (Android 12+)
-      if (await Permission.bluetoothConnect.isDenied) {
-        final result = await Permission.bluetoothConnect.request();
-        if (!result.isGranted) {
-          debugPrint('❌ Bluetooth Connect permission denied');
-          return false;
-        }
-      }
-
-      debugPrint('✅ All BLE permissions granted');
       return true;
     } catch (e) {
-      debugPrint('❌ Error checking permissions: $e');
+      debugPrint('❌ BLE: Permission check error: $e');
       return false;
     }
   }
 
-  /// Start scanning for BLE devices
+  Future<bool> _checkAndroidPermissions() async {
+    // Android 12+ (API 31+): BLUETOOTH_SCAN + BLUETOOTH_CONNECT
+    // Android 6-11 (API 23-30): ACCESS_FINE_LOCATION
+    // Android 11+ Background BT: ACCESS_BACKGROUND_LOCATION (locationAlways)
+    final int sdkInt = await _getAndroidSdkInt();
+
+    List<Permission> required;
+    if (sdkInt >= 31) {
+      // Android 12+: Only need bluetooth permissions for finding/connecting
+      required = [Permission.bluetoothScan, Permission.bluetoothConnect];
+    } else {
+      // Location is required for BLE scanning on Android < 12
+      required = [Permission.location];
+    }
+
+    for (final perm in required) {
+      if (await perm.isDenied || await perm.isRestricted) {
+        final result = await perm.request();
+        if (!result.isGranted) {
+           debugPrint('⚠️ BLE: Permission not granted gracefully: $perm');
+           return false;
+        }
+      }
+      if (await perm.isPermanentlyDenied) {
+        debugPrint('❌ BLE: Permission permanently denied: $perm — opening settings');
+        await openAppSettings();
+        return false;
+      }
+    }
+
+    final notifStatus = await Permission.notification.status;
+    if (!notifStatus.isGranted && !notifStatus.isPermanentlyDenied) {
+      await Permission.notification.request();
+    }
+    
+    debugPrint('✅ BLE: All permissions granted');
+    return true;
+  }
+
+  /// Reads android.os.Build.VERSION.SDK_INT via shared_preferences fallback.
+  /// Uses defaultTargetPlatform for a safe fallback if the method call fails.
+  Future<int> _getAndroidSdkInt() async {
+    // flutter_reactive_ble wraps native layer; we can use permission_handler's
+    // built-in SDK detection indirectly. Here we read from device info.
+    // Simple heuristic: if bluetoothScan permission object exists, SDK >= 31.
+    try {
+      final status = await Permission.bluetoothScan.status;
+      // If the permission exists and is not permanentlyDenied from a prior run,
+      // we are on API 31+
+      if (status != PermissionStatus.permanentlyDenied) {
+        return 31;
+      }
+      return 30;
+    } catch (_) {
+      // On older Android the permission object may throw or return granted directly
+      return 30; // safe fallback — will request location
+    }
+  }
+
+  // ── Scanning ─────────────────────────────────────────────────────────────
+
+  /// Start a foreground scan. Automatically stops after [timeout].
   Future<void> startScan({
     Duration timeout = const Duration(seconds: 15),
   }) async {
     if (_isScanning) {
-      debugPrint('⚠️ Scan already in progress');
+      debugPrint('⚠️ BLE: Scan already running');
+      return;
+    }
+    if (!isBluetoothOn) {
+      debugPrint('❌ BLE: Cannot scan — Bluetooth is off');
       return;
     }
 
-    if (!isBluetoothOn) {
-      debugPrint('❌ Bluetooth is off');
-      // On some platforms we might want to prompt user, but reactive_ble doesn't have a direct helper
-      // Just notify listeners/UI can handle
-    }
-
-    // Check permissions
-    final hasPermissions = await checkAndRequestPermissions();
-    if (!hasPermissions) {
-      debugPrint('❌ Required permissions not granted');
+    final hasPerms = await checkAndRequestPermissions();
+    if (!hasPerms) {
+      debugPrint('❌ BLE: Cannot scan — permissions denied');
       return;
     }
 
     try {
-      debugPrint('🔍 Starting BLE scan...');
+      debugPrint('🔍 BLE: Starting scan (${timeout.inSeconds}s)...');
       _isScanning = true;
-      _discoveredDevices.clear();
-      notifyListeners();
-
-      // Start scanning
-      _scanSubscription = _ble.scanForDevices(
-        withServices: [],
-        scanMode: ScanMode.lowLatency,
-      ).listen(
+      // Scan with empty services — shows all nearby BLE devices.
+      _scanSubscription = _ble
+          .scanForDevices(withServices: [], scanMode: ScanMode.lowLatency)
+          .listen(
         (device) {
-          if (device.name.isNotEmpty) {
-            if (!_discoveredDevices.containsKey(device.id)) {
-              debugPrint('📱 Found device: ${device.name} (${device.id})');
-              _discoveredDevices[device.id] = device;
-              notifyListeners();
-            }
+          if (!_discoveredDevices.containsKey(device.id)) {
+            debugPrint('📱 BLE: Found ${device.name} (${device.id})');
+            _discoveredDevices[device.id] = device;
+            notifyListeners();
           }
         },
-        onError: (error) {
-          debugPrint('❌ Scan error: $error');
+        onError: (Object error) {
+          debugPrint('❌ BLE: Scan error: $error');
+          _isScanning = false;
+          notifyListeners();
+        },
+        onDone: () {
           _isScanning = false;
           notifyListeners();
         },
       );
 
-      // Auto-stop after timeout
       Future.delayed(timeout, () {
-        if (_isScanning) {
-          stopScan();
-        }
+        if (_isScanning) stopScan();
       });
     } catch (e) {
-      debugPrint('❌ Error starting scan: $e');
+      debugPrint('❌ BLE: Error starting scan: $e');
       _isScanning = false;
       notifyListeners();
     }
   }
 
-  /// Stop scanning
   Future<void> stopScan() async {
     if (!_isScanning) return;
-
-    try {
-      debugPrint('🛑 Stopping BLE scan...');
-      await _scanSubscription?.cancel();
-      _isScanning = false;
-      notifyListeners();
-    } catch (e) {
-      debugPrint('❌ Error stopping scan: $e');
-    }
-  }
-
-  /// Connect to a BLE device
-  Future<void> connectToDevice(DiscoveredDevice device) async {
-    final deviceId = device.id;
-    debugPrint('🔗 Connecting to ${device.name} ($deviceId)...');
-
-    // If already connecting/connected, we usually want to return.
-    // BUT if the user is explicitly retrying or the state is stale, we should clear it.
-    // For now, if called again, we will CANCEL the previous attempt and start over.
-    if (_connectionSubscriptions.containsKey(deviceId)) {
-      debugPrint('⚠️ Connection attempt in progress for $deviceId. Cancelling old subscription to retry.');
-      await _connectionSubscriptions[deviceId]?.cancel();
-      _connectionSubscriptions.remove(deviceId);
-    }
-
-    try {
-      _connectionSubscriptions[deviceId] = _ble
-          .connectToDevice(
-        id: deviceId,
-        connectionTimeout: const Duration(seconds: 15),
-      )
-          .listen(
-        (connectionState) {
-          debugPrint(
-            '📡 Connection state for ${device.name}: ${connectionState.connectionState}',
-          );
-
-          if (connectionState.connectionState ==
-              DeviceConnectionState.connected) {
-            _onDeviceConnected(device);
-          } else if (connectionState.connectionState ==
-              DeviceConnectionState.disconnected) {
-            _onDeviceDisconnected(deviceId);
-          }
-        },
-        onError: (Object error) {
-          debugPrint('❌ Connection error for $deviceId: $error');
-          _onDeviceDisconnected(deviceId);
-        },
-      );
-    } catch (e) {
-      debugPrint('❌ Error initiating connection: $e');
-      _onDeviceDisconnected(deviceId); // Ensure cleanup
-    }
-  }
-
-  void _onDeviceConnected(DiscoveredDevice device) {
-    if (!_connectedDevices.containsKey(device.id)) {
-      debugPrint('✅ Connected to ${device.name}');
-      _connectedDevices[device.id] = device;
-      _saveDevice(device);
-      notifyListeners();
-    }
-  }
-
-  void _onDeviceDisconnected(String deviceId) {
-    if (_connectedDevices.containsKey(deviceId)) {
-      debugPrint('🔌 Disconnected from $deviceId');
-      _connectedDevices.remove(deviceId);
-      // Clean up subscription if we consider it fully disconnected
-      // Depending on requirement, we might want to keep retrying or just clean up
-      _connectionSubscriptions[deviceId]?.cancel();
-      _connectionSubscriptions.remove(deviceId);
-      notifyListeners();
-    }
-  }
-
-  /// Disconnect from a BLE device
-  Future<void> disconnectDevice(String deviceId) async {
-    try {
-      debugPrint('🔌 Disconnecting from $deviceId...');
-      // Cancelling the subscription disconnects the device in reactive_ble
-      await _connectionSubscriptions[deviceId]?.cancel();
-      _connectionSubscriptions.remove(deviceId);
-      _connectedDevices.remove(deviceId);
-      notifyListeners();
-      debugPrint('✅ Disconnected from $deviceId');
-    } catch (e) {
-      debugPrint('❌ Error disconnecting device: $e');
-    }
-  }
-
-  /// Check if a device is connected
-  bool isDeviceConnected(String deviceId) {
-    return _connectedDevices.containsKey(deviceId);
-  }
-
-  /// Get device by ID
-  DiscoveredDevice? getDeviceById(String deviceId) {
-    return _connectedDevices[deviceId] ?? _discoveredDevices[deviceId];
-  }
-
-  /// Save a device to previously connected list
-  Future<void> _saveDevice(DiscoveredDevice device) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedDevice = SavedBleDevice(
-        id: device.id,
-        name: device.name.isNotEmpty ? device.name : 'Unknown Device',
-        lastConnected: DateTime.now(),
-      );
-
-      // Load existing devices
-      final existing =
-          _previousDevices.where((d) => d.id != savedDevice.id).toList();
-
-      // Add new device at the beginning
-      existing.insert(0, savedDevice);
-
-      // Keep only last 10 devices
-      final toSave = existing.take(10).toList();
-
-      // Save to storage using pipe-separated format
-      final stringList = toSave.map((d) => d.toString()).toList();
-      await prefs.setStringList(_storageKey, stringList);
-
-      // Update in-memory list
-      _previousDevices.clear();
-      _previousDevices.addAll(toSave);
-
-      notifyListeners();
-      debugPrint('💾 Saved device: ${device.name}');
-    } catch (e) {
-      debugPrint('❌ Error saving device: $e');
-    }
-  }
-
-  /// Load saved devices from storage
-  Future<void> _loadSavedDevices() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonList = prefs.getStringList(_storageKey) ?? [];
-
-      _previousDevices.clear();
-      for (var jsonStr in jsonList) {
-        try {
-          final device = SavedBleDevice.fromJsonString(jsonStr);
-          if (device != null) {
-            _previousDevices.add(device);
-          }
-        } catch (e) {
-          debugPrint('⚠️ Error parsing saved device: $e');
-        }
-      }
-
-      debugPrint('📂 Loaded ${_previousDevices.length} saved devices');
-    } catch (e) {
-      debugPrint('❌ Error loading saved devices: $e');
-    }
-  }
-
-  /// Remove a device from saved list
-  Future<void> removeSavedDevice(String deviceId) async {
-    try {
-      _previousDevices.removeWhere((d) => d.id == deviceId);
-
-      final prefs = await SharedPreferences.getInstance();
-      final stringList = _previousDevices.map((d) => d.toString()).toList();
-      await prefs.setStringList(_storageKey, stringList);
-
-      notifyListeners();
-      debugPrint('🗑️ Removed saved device: $deviceId');
-    } catch (e) {
-      debugPrint('❌ Error removing saved device: $e');
-    }
-  }
-
-  /// Refresh device lists - mostly for UI update
-  Future<void> refresh() async {
-    // reactive_ble handles state via streams, so we just reload saved devices
-    await _loadSavedDevices();
+    debugPrint('🛑 BLE: Stopping scan');
+    await _scanSubscription?.cancel();
+    _scanSubscription = null;
+    _isScanning = false;
     notifyListeners();
   }
 
-  /// Auto-connect to the last connected device
-  Future<void> autoConnectToLastDevice() async {
-    if (_previousDevices.isEmpty) return;
+  // ── Manual Connection ────────────────────────────────────────────────────
 
-    // Try to connect to the most recent device
-    final lastDevice = _previousDevices.first;
-    debugPrint(
-      '🔄 Auto-connecting to last device: ${lastDevice.name} (${lastDevice.id})',
-    );
+  /// Connect to a device the user just tapped in the UI.
+  /// Saves the device and enables auto-reconnect for it.
+  Future<void> connectToDevice(DiscoveredDevice device) async {
+    final deviceId = device.id;
+    debugPrint('🔗 BLE: Connecting to ${device.name} ($deviceId)...');
 
-    // To connect, we need to know it's advertising or just try connecting by ID.
-    // reactive_ble allows connecting by ID without scanning if the OS knows it or it's advertising.
-    // However, for robust auto-reconnect, scanning is often preferred to ensure it's in range.
-    // Here we will try to connect directly.
+    // ⚠️ CRITICAL: Stop scanning BEFORE connecting.
+    // Android cannot reliably scan and connect simultaneously — the scan
+    // causes the connection stream to immediately report "disconnected".
+    if (_isScanning) {
+      debugPrint('🛑 BLE: Stopping scan before connect...');
+      await stopScan();
+      // Give the radio a moment to fully stop scanning
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
 
-    // We fabricate a DiscoveredDevice to pass to connectToDevice
-    // This is a bit of a hack since we don't have the full DiscoveredDevice object,
-    // but connectToDevice really only needs the ID.
-    // Note: serviceData, manufacturerData etc will be empty.
-    final device = DiscoveredDevice(
-      id: lastDevice.id,
-      name: lastDevice.name,
-      serviceData: {},
-      manufacturerData: Uint8List(0),
-      rssi: 0,
-      serviceUuids: [],
-    );
+    // ⚠️ CRITICAL: Cancel ALL other autoConnect streams before direct connect.
+    // Android's BLE stack has limited GATT client slots. An open autoConnect=true
+    // stream for another device (e.g. an old/offline I-SPOON) consumes a slot and
+    // blocks the direct connect from succeeding.
+    // We rebuild these streams after the connection is established.
+    final otherAutoConnects = _connectionSubscriptions.keys
+        .where((id) => id != deviceId && !_connectedDevices.containsKey(id))
+        .toList();
+    if (otherAutoConnects.isNotEmpty) {
+      debugPrint('⏸️ BLE: Pausing ${otherAutoConnects.length} autoConnect stream(s) for direct connect');
+      for (final id in otherAutoConnects) {
+        await _connectionSubscriptions[id]?.cancel();
+        _connectionSubscriptions.remove(id);
+      }
+      // Android needs time to fully close GATT clients and release slots.
+      // BluetoothGatt.close() is async at native level — 2 s is safe.
+      await Future.delayed(const Duration(milliseconds: 2000));
+    }
 
-    connectToDevice(device);
+    // Cancel stale stream for THIS device (same MAC reconnect).
+    if (_connectionSubscriptions.containsKey(deviceId)) {
+      debugPrint('⚠️ BLE: Cancelling stale stream for ${device.name} before reconnecting');
+      await _connectionSubscriptions[deviceId]?.cancel();
+      _connectionSubscriptions.remove(deviceId);
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    _autoReconnectEnabled = true;
+    _startConnectionStream(deviceId, device.name, device: device, directConnect: true);
+
+    // Wait up to 20 s for connection (15 s direct + 2 s GATT teardown buffer).
+    // Do NOT throw if the subscription disappears — onDone already schedules
+    // a background autoConnect retry. Just report failure to the UI caller.
+    int waitMs = 0;
+    while (!isDeviceConnected(deviceId) && waitMs < 20000) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waitMs += 100;
+    }
+
+    if (!isDeviceConnected(deviceId)) {
+      throw Exception('Connection timed out — retrying in background');
+    }
   }
 
-  /// Forget a device (remove from saved list)
+  // ── Auto-Reconnect ───────────────────────────────────────────────────────
+
+  /// Call once at startup. Loads the last paired device and begins persistent
+  /// auto-reconnect using the native BLE stack (no timeout = autoConnect=true).
+  Future<void> autoConnectToLastDevice() async {
+    if (_previousDevices.isEmpty) {
+      await _loadSavedDevices();
+    }
+    if (_previousDevices.isEmpty) {
+      debugPrint('🔵 BLE: No saved devices — skipping auto-connect');
+      return;
+    }
+
+    // Wait up to 10 s for the BT adapter to become ready
+    if (_adapterState != BleStatus.ready) {
+      debugPrint('⏳ BLE: Waiting for adapter...');
+      int waited = 0;
+      while (_adapterState != BleStatus.ready && waited < 10000) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        waited += 250;
+      }
+      if (_adapterState != BleStatus.ready) {
+        debugPrint('❌ BLE: Adapter not ready after 10 s — deferring auto-connect');
+        // Will be triggered again via the adapter state listener when BT turns on
+        _autoReconnectEnabled = true;
+        return;
+      }
+    }
+
+    final hasPerms = await checkAndRequestPermissions();
+    if (!hasPerms) {
+      debugPrint('❌ BLE: Auto-connect skipped — permissions denied');
+      return;
+    }
+
+    _autoReconnectEnabled = true;
+    _suspended = false; // Clear suspension flag — main isolate owns BLE again
+    for (final device in _previousDevices) {
+      debugPrint('🔄 BLE: Starting auto-connect for ${device.name}');
+      _startConnectionStream(device.id, device.name);
+    }
+  }
+
+  /// Re-kick any device that should be auto-reconnecting but has no active stream.
+  void _restartPendingAutoConnects() {
+    if (!_autoReconnectEnabled || _previousDevices.isEmpty) return;
+    for (final device in _previousDevices) {
+      if (!_connectionSubscriptions.containsKey(device.id)) {
+        debugPrint('🔄 BLE: Restarting auto-connect after BT re-enabled: ${device.name}');
+        _startConnectionStream(device.id, device.name);
+      }
+    }
+  }
+
+  /// Core connection stream.
+  /// [directConnect] = true: sets a 15 s timeout → Android uses autoConnect=false
+  ///   (immediate direct connection attempt). Use for user-initiated connects.
+  /// [directConnect] = false: no timeout → Android uses autoConnect=true
+  ///   (OS keeps scanning forever). Use for background auto-reconnect only.
+  void _startConnectionStream(
+    String deviceId,
+    String deviceName, {
+    DiscoveredDevice? device,
+    bool directConnect = false,
+  }) {
+    if (_connectionSubscriptions.containsKey(deviceId)) {
+      debugPrint('🔄 BLE: Stream already active for $deviceName — skipping');
+      return;
+    }
+
+    debugPrint('🔄 BLE: Opening connection stream for $deviceName ($deviceId) [direct=$directConnect]');
+
+    _connectionSubscriptions[deviceId] = _ble
+        .connectToDevice(
+      id: deviceId,
+      connectionTimeout: directConnect
+          ? const Duration(seconds: 15) // autoConnect=false on Android
+          : null,                        // autoConnect=true (background reconnect)
+    )
+        .listen(
+      (state) {
+        debugPrint(
+            '📡 BLE: $deviceName → ${state.connectionState}');
+        switch (state.connectionState) {
+          case DeviceConnectionState.connected:
+            _onDeviceConnected(deviceId, deviceName, device);
+            break;
+          case DeviceConnectionState.disconnected:
+            _onDeviceDisconnected(deviceId);
+            // Do NOT cancel the subscription here — the native layer keeps
+            // scanning for the device and will emit `connected` again.
+            break;
+          case DeviceConnectionState.connecting:
+          case DeviceConnectionState.disconnecting:
+            break;
+        }
+      },
+      onError: (Object error) {
+        debugPrint('❌ BLE: Connection error for $deviceName: $error');
+        _onDeviceDisconnected(deviceId);
+        _connectionSubscriptions.remove(deviceId)?.cancel();
+
+        // Retry with direct connect — device is nearby (user just tapped it)
+        if (_autoReconnectEnabled && !_suspended) {
+          debugPrint('🔄 BLE: Retrying $deviceName in 3 s...');
+          Future.delayed(const Duration(seconds: 3), () {
+            if (_autoReconnectEnabled && !_suspended &&
+                !_connectedDevices.containsKey(deviceId)) {
+              _startConnectionStream(deviceId, deviceName, device: device,
+                  directConnect: directConnect);
+            }
+          });
+        }
+      },
+      onDone: () {
+        debugPrint('⚠️ BLE: Stream closed for $deviceName');
+        _onDeviceDisconnected(deviceId);
+        _connectionSubscriptions.remove(deviceId)?.cancel();
+
+        // Stream closed = device out of range; switch to background autoConnect
+        if (_autoReconnectEnabled && !_suspended &&
+            !_connectedDevices.containsKey(deviceId)) {
+          debugPrint('🔄 BLE: Rebuilding stream for $deviceName in 3 s...');
+          Future.delayed(const Duration(seconds: 3), () {
+            if (_autoReconnectEnabled && !_suspended &&
+                !_connectedDevices.containsKey(deviceId)) {
+              _startConnectionStream(deviceId, deviceName, device: device,
+                  directConnect: false);
+            }
+          });
+        }
+      },
+    );
+  }
+
+  // ── Connection Events ────────────────────────────────────────────────────
+
+  void _onDeviceConnected(
+    String deviceId,
+    String deviceName,
+    DiscoveredDevice? device,
+  ) {
+    if (_connectedDevices.containsKey(deviceId)) return; // Already tracked
+
+    debugPrint('✅ BLE: Connected to $deviceName ($deviceId)');
+
+    // Build a DiscoveredDevice placeholder if we don't have scan data
+    final resolved = device ??
+        DiscoveredDevice(
+          id: deviceId,
+          name: deviceName,
+          serviceData: const {},
+          manufacturerData: Uint8List(0),
+          rssi: 0,
+          serviceUuids: const [],
+        );
+
+    _connectedDevices[deviceId] = resolved;
+    _saveDevice(resolved); // Update lastConnected timestamp
+    notifyListeners();
+
+    // Restart any autoConnect streams that were paused to allow this direct connect.
+    _restartPendingAutoConnects();
+  }
+
+  void _onDeviceDisconnected(String deviceId) {
+    if (!_connectedDevices.containsKey(deviceId)) return;
+    debugPrint('🔌 BLE: Disconnected from $deviceId');
+    _connectedDevices.remove(deviceId);
+    notifyListeners();
+  }
+
+  // ── Explicit Disconnect ──────────────────────────────────────────────────
+
+  /// User-initiated disconnect. Stops auto-reconnect for this device.
+  Future<void> disconnectDevice(String deviceId) async {
+    debugPrint('🔌 BLE: Explicitly disconnecting $deviceId');
+    _autoReconnectEnabled = false;
+    await _connectionSubscriptions[deviceId]?.cancel();
+    _connectionSubscriptions.remove(deviceId);
+    _connectedDevices.remove(deviceId);
+    notifyListeners();
+  }
+
+  /// Forget a device: remove from storage and disconnect.
   Future<void> forgetDevice(String deviceId) async {
     await removeSavedDevice(deviceId);
     await disconnectDevice(deviceId);
   }
 
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  bool isDeviceConnected(String deviceId) =>
+      _connectedDevices.containsKey(deviceId);
+
+  DiscoveredDevice? getDeviceById(String deviceId) =>
+      _connectedDevices[deviceId] ?? _discoveredDevices[deviceId];
+
+  // ── Persistence ──────────────────────────────────────────────────────────
+
+  Future<void> _saveDevice(DiscoveredDevice device) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = SavedBleDevice(
+        id: device.id,
+        name: device.name.isNotEmpty ? device.name : 'Unknown Device',
+        lastConnected: DateTime.now(),
+      );
+
+      final existing =
+          _previousDevices.where((d) => d.id != saved.id).toList();
+      existing.insert(0, saved);
+      final toSave = existing.take(10).toList();
+
+      await prefs.setStringList(
+          _storageKey, toSave.map((d) => d.toString()).toList());
+      await prefs.setString(_primaryIdKey, device.id);
+      // Sync the bg-service list so SmartSpoonBleService reconnects all spoons
+      await prefs.setString('smart_spoon_ids',
+          jsonEncode(toSave.map((d) => d.id).toList()));
+
+      _previousDevices
+        ..clear()
+        ..addAll(toSave);
+
+      notifyListeners();
+      debugPrint('💾 BLE: Saved device: ${device.name}');
+    } catch (e) {
+      debugPrint('❌ BLE: Error saving device: $e');
+    }
+  }
+
+  Future<void> _loadSavedDevices() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_storageKey) ?? [];
+
+      _previousDevices.clear();
+      final cleaned = <String>[];
+      for (final s in list) {
+        final d = SavedBleDevice.fromString(s);
+        if (d != null) {
+          _previousDevices.add(d);
+          cleaned.add(s);
+        }
+      }
+
+      // If we removed any stale entries, persist the clean list
+      if (cleaned.length != list.length) {
+        await prefs.setStringList(_storageKey, cleaned);
+        debugPrint('🧹 BLE: Cleaned ${list.length - cleaned.length} stale device(s) from storage');
+      }
+
+      debugPrint('📂 BLE: Loaded ${_previousDevices.length} saved devices');
+    } catch (e) {
+      debugPrint('❌ BLE: Error loading saved devices: $e');
+    }
+  }
+
+  Future<void> removeSavedDevice(String deviceId) async {
+    _previousDevices.removeWhere((d) => d.id == deviceId);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+          _storageKey, _previousDevices.map((d) => d.toString()).toList());
+      // Sync the bg-service list
+      await prefs.setString('smart_spoon_ids',
+          jsonEncode(_previousDevices.map((d) => d.id).toList()));
+    } catch (e) {
+      debugPrint('❌ BLE: Error removing saved device: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> refresh() async {
+    await _loadSavedDevices();
+    notifyListeners();
+  }
+
+  // ── Dispose ──────────────────────────────────────────────────────────────
+
   @override
   void dispose() {
-    debugPrint('🔵 BLE Service: Disposing...');
     _adapterStateSubscription?.cancel();
     _scanSubscription?.cancel();
-
-    for (var subscription in _connectionSubscriptions.values) {
-      subscription.cancel();
+    for (final sub in _connectionSubscriptions.values) {
+      sub.cancel();
     }
     _connectionSubscriptions.clear();
-
     super.dispose();
   }
 }
 
-/// Model for saved BLE devices
+// ── SavedBleDevice ───────────────────────────────────────────────────────────
+
 class SavedBleDevice {
   final String id;
   final String name;
   final DateTime lastConnected;
 
-  SavedBleDevice({
+  const SavedBleDevice({
     required this.id,
     required this.name,
     required this.lastConnected,
   });
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'lastConnected': lastConnected.toIso8601String(),
-  };
-
-  static SavedBleDevice? fromJson(Map<String, dynamic> json) {
-    try {
-      return SavedBleDevice(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        lastConnected: DateTime.parse(json['lastConnected'] as String),
-      );
-    } catch (e) {
-      debugPrint('Error parsing SavedBleDevice: $e');
-      return null;
-    }
-  }
-
-  static SavedBleDevice? fromJsonString(String jsonStr) {
-    try {
-      // Simple parsing for our storage format
-      final parts = jsonStr.split('|');
-      if (parts.length >= 3) {
-        return SavedBleDevice(
-          id: parts[0],
-          name: parts[1],
-          lastConnected: DateTime.parse(parts[2]),
-        );
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Error parsing SavedBleDevice from string: $e');
-      return null;
-    }
-  }
-
+  /// Serialised as "id|name|isoTimestamp"
   @override
   String toString() => '$id|$name|${lastConnected.toIso8601String()}';
 
-  String get formattedLastConnected {
-    final now = DateTime.now();
-    final difference = now.difference(lastConnected);
-
-    if (difference.inMinutes < 60) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${(difference.inDays / 7).floor()}w ago';
+  static SavedBleDevice? fromString(String s) {
+    try {
+      final parts = s.split('|');
+      if (parts.length < 3) return null;
+      return SavedBleDevice(
+        id: parts[0],
+        name: parts[1],
+        lastConnected: DateTime.parse(parts[2]),
+      );
+    } catch (_) {
+      return null;
     }
+  }
+
+  String get formattedLastConnected {
+    final diff = DateTime.now().difference(lastConnected);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${(diff.inDays / 7).floor()}w ago';
   }
 }

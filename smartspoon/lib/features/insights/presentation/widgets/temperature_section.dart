@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../domain/models.dart';
 
 class TemperatureSection extends StatefulWidget {
@@ -75,25 +76,26 @@ class _TemperatureSectionState extends State<TemperatureSection>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      const Color(0xFFFF6B6B),
+                      const Color(0xFF10B981),
                       const Color(0xFFFF8E53),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
+                child: Icon( // Removed const
                   Icons.whatshot_rounded,
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onSurface, // Changed hardcoded color
                   size: 20,
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text( // Removed const
                 'Temperature Monitor',
-                style: TextStyle(
+                style: GoogleFonts.manrope( // Changed to GoogleFonts.manrope
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
+                  color: Theme.of(context).colorScheme.onSurface, // Added Theme color
                 ),
               ),
             ],
@@ -127,13 +129,13 @@ class _TemperatureSectionState extends State<TemperatureSection>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.orange.withValues(alpha: 0.15),
-                    Colors.deepOrange.withValues(alpha: 0.1),
+                    Colors.orange.withOpacity(0.15), // Changed withValues to withOpacity
+                    Colors.deepOrange.withOpacity(0.1), // Changed withValues to withOpacity
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.orange.withValues(alpha: 0.3),
+                  color: Colors.orange.withOpacity(0.3), // Changed withValues to withOpacity
                   width: 1,
                 ),
               ),
@@ -147,7 +149,7 @@ class _TemperatureSectionState extends State<TemperatureSection>
                     ),
                     child: const Icon(
                       Icons.warning_amber_rounded,
-                      color: Colors.white,
+                      color: Color(0xFF0F172A),
                       size: 20,
                     ),
                   ),
@@ -216,7 +218,7 @@ class _AnimatedCircularTempGauge extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.15),
+                          color: color.withOpacity(0.15), // Changed withValues to withOpacity
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -226,12 +228,12 @@ class _AnimatedCircularTempGauge extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
+                      Text( // Removed const
                         '${(value * animation.value).toStringAsFixed(0)}°C',
-                        style: TextStyle(
+                        style: GoogleFonts.manrope( // Changed to GoogleFonts.manrope
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: color,
+                          color: Theme.of(context).colorScheme.onSurface, // Changed hardcoded color
                         ),
                       ),
                     ],

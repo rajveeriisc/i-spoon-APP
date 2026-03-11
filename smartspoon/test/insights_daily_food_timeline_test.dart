@@ -4,33 +4,26 @@ import 'package:smartspoon/features/insights/presentation/widgets/daily_food_tim
 import 'package:smartspoon/features/insights/domain/models.dart';
 
 void main() {
-  testWidgets('DailyFoodTimeline renders title and chart', (tester) async {
+  testWidgets('DailyFoodTimeline renders with summaries', (tester) async {
     final now = DateTime.now();
-    final events = [
-      BiteEvent(
-        index: 1,
-        timestamp: now.subtract(const Duration(hours: 1)),
-        foodTempC: 42,
-        tremorMagnitude: 0.3,
-        type: BiteEventType.valid,
-      ),
-      BiteEvent(
-        index: 2,
-        timestamp: now,
-        foodTempC: 41,
-        tremorMagnitude: 0.4,
-        type: BiteEventType.missed,
+    final summaries = [
+      DailyBiteSummary(
+        date: now,
+        totalBites: 24,
+        avgMealDurationMin: 12.0,
+        totalDurationMin: 24.0,
+        avgPaceBpm: 2.0,
+        mealBites: {'Breakfast': 8, 'Lunch': 16},
       ),
     ];
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: DailyFoodTimeline(events: events)),
+        home: Scaffold(body: DailyFoodTimeline(summaries: summaries)),
       ),
     );
 
-    expect(find.text('Daily Food Timeline'), findsOneWidget);
-    // Dots are drawn; we at least ensure the widget tree builds
+    expect(find.text('Weekly History'), findsOneWidget);
     expect(find.byType(DailyFoodTimeline), findsOneWidget);
   });
 }

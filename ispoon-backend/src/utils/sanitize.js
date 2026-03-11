@@ -99,6 +99,30 @@ export function sanitizeBoolean(input) {
 }
 
 /**
+ * Sanitize nested profile_metadata object (age, gender only — unknown keys dropped)
+ */
+function sanitizeProfileMetadata(meta) {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+  const safe = {};
+  if (meta.age !== undefined) safe.age = sanitizeInteger(meta.age, 0, 150);
+  if (meta.gender !== undefined) safe.gender = sanitizeText(meta.gender, 20);
+  return safe;
+}
+
+/**
+ * Sanitize bite goals object
+ */
+function sanitizeBiteGoals(goals) {
+  if (!goals || typeof goals !== 'object' || Array.isArray(goals)) return {};
+  const safe = {};
+  if (goals.breakfast !== undefined) safe.breakfast = sanitizeInteger(goals.breakfast, 0, 10000);
+  if (goals.lunch !== undefined) safe.lunch = sanitizeInteger(goals.lunch, 0, 10000);
+  if (goals.dinner !== undefined) safe.dinner = sanitizeInteger(goals.dinner, 0, 10000);
+  if (goals.snack !== undefined) safe.snack = sanitizeInteger(goals.snack, 0, 10000);
+  return safe;
+}
+
+/**
  * Validate and sanitize user profile data
  */
 export function sanitizeUserProfile(data) {
@@ -116,22 +140,6 @@ export function sanitizeUserProfile(data) {
     sanitized.location = sanitizeText(data.location, 200);
   }
 
-  if (data.bio !== undefined) {
-    sanitized.bio = sanitizeText(data.bio, 500);
-  }
-
-  if (data.diet_type !== undefined) {
-    sanitized.diet_type = sanitizeText(data.diet_type, 50);
-  }
-
-  if (data.activity_level !== undefined) {
-    sanitized.activity_level = sanitizeText(data.activity_level, 50);
-  }
-
-  if (data.allergies !== undefined) {
-    sanitized.allergies = sanitizeStringArray(data.allergies, 20, 100);
-  }
-
   if (data.daily_goal !== undefined) {
     sanitized.daily_goal = sanitizeInteger(data.daily_goal, 0, 10000);
   }
@@ -140,50 +148,28 @@ export function sanitizeUserProfile(data) {
     sanitized.notifications_enabled = sanitizeBoolean(data.notifications_enabled);
   }
 
-  if (data.emergency_contact !== undefined) {
-    sanitized.emergency_contact = sanitizeText(data.emergency_contact, 100);
-  }
-
   if (data.avatar_url !== undefined) {
-    // Avatar URLs are internal paths, just sanitize as text
     sanitized.avatar_url = sanitizeText(data.avatar_url, 500);
   }
 
-  if (data.avatar_url !== undefined) {
-    // Avatar URLs are internal paths, just sanitize as text
-    sanitized.avatar_url = sanitizeText(data.avatar_url, 500);
-  }
+  // Per-meal bite goals (flat fields)
+  if (data.breakfast_goal !== undefined) sanitized.breakfast_goal = sanitizeInteger(data.breakfast_goal, 0, 10000);
+  if (data.lunch_goal !== undefined) sanitized.lunch_goal = sanitizeInteger(data.lunch_goal, 0, 10000);
+  if (data.dinner_goal !== undefined) sanitized.dinner_goal = sanitizeInteger(data.dinner_goal, 0, 10000);
+  if (data.snack_goal !== undefined) sanitized.snack_goal = sanitizeInteger(data.snack_goal, 0, 10000);
 
-  // Handle bite goals
-  if (data.breakfast_goal !== undefined) sanitized.breakfast_goal = sanitizeInteger(data.breakfast_goal);
-  if (data.lunch_goal !== undefined) sanitized.lunch_goal = sanitizeInteger(data.lunch_goal);
-  if (data.dinner_goal !== undefined) sanitized.dinner_goal = sanitizeInteger(data.dinner_goal);
-  if (data.snack_goal !== undefined) sanitized.snack_goal = sanitizeInteger(data.snack_goal);
-
+  // Bite goals as nested object — sanitize each field individually
   if (data.bite_goals !== undefined) {
-    // If passed as full object
-    sanitized.bite_goals = data.bite_goals;
+    sanitized.bite_goals = sanitizeBiteGoals(data.bite_goals);
   }
 
-  // Handle profile metadata (age, gender, height, weight)
-  if (data.age !== undefined) sanitized.age = sanitizeInteger(data.age);
+  // Profile metadata — only allow known fields, drop unknown keys
+  if (data.age !== undefined) sanitized.age = sanitizeInteger(data.age, 0, 150);
   if (data.gender !== undefined) sanitized.gender = sanitizeText(data.gender, 20);
-  if (data.height !== undefined) sanitized.height = parseFloat(data.height); // or sanitizeFloat if available
-  if (data.weight !== undefined) sanitized.weight = parseFloat(data.weight);
 
   if (data.profile_metadata !== undefined) {
-    sanitized.profile_metadata = data.profile_metadata;
+    sanitized.profile_metadata = sanitizeProfileMetadata(data.profile_metadata);
   }
 
   return sanitized;
 }
-
-
-
-
-
-
-
-
-
-

@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../domain/insights_repository.dart';
 import '../domain/models.dart';
+import '../infrastructure/live_insights_repository.dart';
+import '../domain/services/unified_data_service.dart';
 
 class InsightsController with ChangeNotifier {
   final InsightsRepository _repository;
+  UnifiedDataService? _unifiedDataService; // Added to blend live data
   Timer? _tremorRefreshTimer;
 
   InsightsController(this._repository);
@@ -23,6 +27,7 @@ class InsightsController with ChangeNotifier {
   StreamSubscription? _tremorSub;
   StreamSubscription? _healthSub;
   StreamSubscription? _envSub;
+  StreamSubscription? _authSub;
 
   MealSummary? get summary => _summary;
   List<BiteEvent> get bites => _bites;
@@ -31,12 +36,89 @@ class InsightsController with ChangeNotifier {
   DeviceHealth? get deviceHealth => _deviceHealth;
   EnvironmentData? get environment => _environment;
   TrendData? get trends => _trends;
-  List<DailyBiteSummary> get dailySummaries => _dailySummaries;
+
+  List<DailyBiteSummary> get dailySummaries {
+    // If we have live data, dynamically update or inject today's summary
+    if (_unifiedDataService != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final liveBites = _unifiedDataService!.totalBites;
+
+      // Build live meal map
+      final liveMealBites = {
+        'Breakfast': _unifiedDataService!.breakfastTotalBites,
+        'Lunch': _unifiedDataService!.lunchTotalBites,
+        'Dinner': _unifiedDataService!.dinnerTotalBites,
+        'Snacks': _unifiedDataService!.snackTotalBites,
+      };
+
+      // Find today's summary index
+      final todayIdx = _dailySummaries.indexWhere((s) => 
+        s.date.year == now.year && s.date.month == now.month && s.date.day == now.day);
+      
+      if (todayIdx != -1) {
+        // Update existing today entry with live data.
+        // Keep totalBites and mealBites consistent: use whichever source has a
+        // higher total so the graph bar and the table rows always match.
+        final current = _dailySummaries[todayIdx];
+        final updatedList = List<DailyBiteSummary>.from(_dailySummaries);
+        final liveMealTotal = liveMealBites.values.fold(0, (a, b) => a + b);
+        final useLive = liveMealTotal >= current.totalBites;
+        updatedList[todayIdx] = current.copyWith(
+          totalBites: useLive ? liveMealTotal : current.totalBites,
+          mealBites: useLive ? liveMealBites : current.mealBites,
+        );
+        return updatedList;
+      } else if (liveBites > 0) {
+        // No today entry in DB yet — create one from live data
+        final liveToday = DailyBiteSummary(
+          date: today,
+          totalBites: liveBites,
+          avgMealDurationMin: 0,
+          totalDurationMin: 0,
+          avgPaceBpm: _unifiedDataService!.eatingSpeedBpm,
+          mealBites: liveMealBites,
+        );
+        return [..._dailySummaries, liveToday];
+      }
+    }
+    return _dailySummaries;
+  }
+
   List<DailyTremorSummary> get tremorSummaries => _tremorSummaries;
 
+  void setUnifiedDataService(UnifiedDataService service) {
+    _unifiedDataService = service;
+    _unifiedDataService?.addListener(notifyListeners);
+  }
+
   Future<void> init() async {
+    // If the repository supports async initialisation (backfill), await it FIRST
+    // so daily_summaries are complete before we read from them in fetchHistory.
+    final repo = _repository;
+    if (repo is LiveInsightsRepository) {
+      await repo.initAsync();
+    }
     await fetchHistory(90); // Fetch all 3 months so details pages have data
     _subscribeLive();
+
+    // Re-fetch history once Firebase Auth is fully restored (cold-start race fix).
+    // On the initial fetchHistory() above, LiveInsightsRepository._currentUserId may
+    // return '' because Firebase hasn't restored the session yet → empty results.
+    // This listener fires ~200ms later with the real UID so historical data shows up.
+    _authSub?.cancel();
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (user != null) {
+        debugPrint('[IC] Auth restored (uid=${user.uid}), backfilling + re-fetching history...');
+        // Re-run backfill now that we have a real user ID (was skipped on cold-start)
+        final repo = _repository;
+        if (repo is LiveInsightsRepository) {
+          await repo.initAsync();
+        }
+        await fetchHistory(90);
+        _authSub?.cancel(); // Only need to fire once per app launch
+      }
+    });
     // Refresh tremor summaries every 30 seconds for real-time table updates
     _tremorRefreshTimer?.cancel();
     _tremorRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -105,13 +187,8 @@ class InsightsController with ChangeNotifier {
     _tremorSub?.cancel();
     _healthSub?.cancel();
     _envSub?.cancel();
-    // Dispose mock repository if available (no-op for others)
-    try {
-      // ignore: avoid_dynamic_calls
-      (_repository as dynamic).dispose();
-      // ignore: empty_catches
-    } catch (_) {}
-  // ... existing methods ...
+    _authSub?.cancel();
+    _unifiedDataService?.removeListener(notifyListeners);
     super.dispose();
   }
   

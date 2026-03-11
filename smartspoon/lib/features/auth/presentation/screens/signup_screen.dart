@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/auth/index.dart';
 import 'package:smartspoon/features/home/index.dart';
@@ -13,16 +14,16 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  // Form key for validation
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers for text fields
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
 
   @override
   void dispose() {
@@ -57,30 +58,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Verification email sent. Please verify your email, then log in.',
+                'Account created! Please verify your email, then log in.',
               ),
+              duration: Duration(seconds: 4),
             ),
+          );
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
           );
           return;
         }
 
         final idToken = result['token'] as String;
-        await AuthService.verifyFirebaseToken(idToken: idToken);
-        try {
-          final me = await AuthService.getMe();
-          if (!mounted) return;
-          Provider.of<UserProvider>(
-            context,
-            listen: false,
-          ).setFromMap((me['user'] as Map<String, dynamic>));
-        } catch (_) {}
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Signup successful. Welcome!')),
-        );
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
+        await _handleAuthSuccess(idToken: idToken, welcomeMessage: 'Signup successful. Welcome!');
       } else {
         throw AuthException(result['message'] as String? ?? 'Signup failed');
       }
@@ -112,8 +102,30 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: AutofillGroup(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 32),
+              // Premium back arrow button
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppTheme.emerald.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Theme.of(context).colorScheme.onSurface,
+                    size: 18,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               const AuthFormHeader(
                 title: 'Create Account',
                 subtitle: 'Start your journey with us',
@@ -141,44 +153,75 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 controller: _passwordController,
                 label: 'Password',
                 icon: Icons.lock_outline,
-                obscureText: true,
+                obscureText: !_isPasswordVisible,
                 autofillHints: const [AutofillHints.newPassword],
                 validator: validatePassword,
+                suffix: IconButton(
+                  icon: Icon(
+                    _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  onPressed: () =>
+                      setState(() => _isPasswordVisible = !_isPasswordVisible),
+                ),
               ),
               const SizedBox(height: 16),
               AuthTextField(
                 controller: _confirmPasswordController,
                 label: 'Confirm Password',
                 icon: Icons.lock_outline,
-                obscureText: true,
+                obscureText: !_isConfirmPasswordVisible,
                 autofillHints: const [AutofillHints.password],
                 validator: (value) =>
                     validateConfirmPassword(value, _passwordController.text),
+                suffix: IconButton(
+                  icon: Icon(
+                    _isConfirmPasswordVisible
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  onPressed: () => setState(() =>
+                      _isConfirmPasswordVisible = !_isConfirmPasswordVisible),
+                ),
               ),
-
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               AuthPrimaryButton(
                 label: 'Sign Up',
                 loading: _isLoading,
                 onPressed: _isLoading ? null : _handleSignUp,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     'Already have an account? ',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    style: GoogleFonts.manrope(
+                      fontSize: 15,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                  TextButton(
-                    onPressed: () {
+                  GestureDetector(
+                    onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => const LoginScreen(),
                         ),
                       );
                     },
-                    child: const Text('Log In'),
+                    child: const Text(
+                      'Log In',
+                      style: TextStyle(
+                        color: AppTheme.emerald,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Manrope',
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -188,6 +231,44 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
       ),
     );
+  }
+
+  /// Shared post-auth success logic: exchange token, fetch profile, navigate home
+  Future<void> _handleAuthSuccess({required String idToken, String welcomeMessage = 'Welcome!'}) async {
+    try {
+      await AuthService.verifyFirebaseToken(idToken: idToken);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backend sync failed: ${e.toString()}')),
+      );
+      return;
+    }
+
+    final storedJwt = await AuthService.getToken();
+    if (storedJwt == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authentication failed. Please try again.')),
+      );
+      return;
+    }
+
+    try {
+      final me = await AuthService.getMe();
+      if (!mounted) return;
+      final userMap = me['user'] as Map<String, dynamic>? ?? me;
+      Provider.of<UserProvider>(context, listen: false).setFromMap(userMap);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load profile: ${e.toString()}')),
+      );
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(welcomeMessage)));
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
   }
 
   String? _validateName(String? value) {

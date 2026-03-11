@@ -1,143 +1,230 @@
 import 'package:flutter/material.dart';
-import '../../domain/models.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:smartspoon/features/insights/domain/models.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/premium_widgets.dart';
+import 'package:smartspoon/features/insights/presentation/widgets/analytics_widgets.dart';
 
 class TremorCharts extends StatelessWidget {
-  const TremorCharts({
-    super.key,
-    required this.metrics,
-    this.onViewHistory,
-  });
   final TremorMetrics? metrics;
   final VoidCallback? onViewHistory;
 
+  const TremorCharts({
+    super.key,
+    this.metrics,
+    this.onViewHistory,
+  });
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final m = metrics;
-    final level = m?.level ?? TremorLevel.low;
-    final levelText = level == TremorLevel.low
-        ? 'Low'
-        : level == TremorLevel.moderate
-            ? 'Moderate'
-            : 'High';
+    final level = metrics?.level ?? TremorLevel.low;
+    final magnitude = metrics?.currentMagnitude ?? 0.0;
+    final frequency = metrics?.peakFrequencyHz ?? 0.0;
 
-    final levelColor = level == TremorLevel.low
-        ? const Color(0xFF34C759)
-        : level == TremorLevel.moderate
-            ? const Color(0xFFFFB100)
-            : const Color(0xFFFF3B30);
+    Color levelColor;
+    String levelLabel;
+    switch (level) {
+      case TremorLevel.low:
+        levelColor = AppTheme.emerald;
+        levelLabel = 'Low';
+        break;
+      case TremorLevel.moderate:
+        levelColor = AppTheme.amber;
+        levelLabel = 'Moderate';
+        break;
+      case TremorLevel.high:
+        levelColor = const Color(0xFFEF4444);
+        levelLabel = 'High';
+        break;
+    }
 
-    return Container(
-      // margin handled by parent
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [
-                  const Color(0xFF2C2C2E),
-                  const Color(0xFF1C1C1E),
-                ]
-              : [
-                  Colors.white,
-                  const Color(0xFFF8F9FA),
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row with title + optional "View History" button
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tremor Analysis',
+                  style: GoogleFonts.manrope(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Real-time sensor data',
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+            if (onViewHistory != null)
+              TextButton(
+                onPressed: onViewHistory,
+                child: Text(
+                  'View History',
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    color: AppTheme.emerald,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.5)
-                : Colors.grey.withValues(alpha: 0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+        const SizedBox(height: 12),
+        PremiumGlassCard(
+          child: Column(
+            children: [
+              // Level indicator
+              Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: levelColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Tremor Level: $levelLabel',
+                        style: GoogleFonts.manrope(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: levelColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: levelColor.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      levelLabel.toUpperCase(),
+                      style: GoogleFonts.manrope(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: levelColor,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Metrics row
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetricBox(
+                      label: 'Magnitude',
+                      value: magnitude.toStringAsFixed(3),
+                      unit: 'index',
+                      color: levelColor,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MetricBox(
+                      label: 'Frequency',
+                      value: frequency.toStringAsFixed(1),
+                      unit: 'Hz',
+                      color: AppTheme.indigo,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Gauge bar
+              _TremorGaugeBar(level: level, magnitude: magnitude),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+class _MetricBox extends StatelessWidget {
+  final String label;
+  final String value;
+  final String unit;
+  final Color color;
+
+  const _MetricBox({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF667EEA),
-                      const Color(0xFF764BA2),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.back_hand_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Tremor Analysis',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const Spacer(),
-              if (onViewHistory != null)
-                TextButton.icon(
-                  onPressed: onViewHistory,
-                  icon: const Icon(Icons.history_rounded, size: 18),
-                  label: const Text('History'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: isDark ? Colors.grey[300] : Colors.grey[700],
+          Text(
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  value,
+                  style: GoogleFonts.manrope(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: color,
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          
-          // Simplified Metrics Display
-          Row(
-            children: [
-              Expanded(
-                child: _SimpleMetricCard(
-                  label: 'Tremor Level',
-                  value: levelText,
-                  icon: Icons.monitor_heart_rounded,
-                  color: levelColor,
-                  isDark: isDark,
-                  isHighlighted: true,
+                const SizedBox(width: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    unit,
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _SimpleMetricCard(
-                  label: 'Magnitude',
-                  value: '${m?.currentMagnitude.toStringAsFixed(3) ?? '—'} rad/s',
-                  icon: Icons.show_chart_rounded,
-                  color: const Color(0xFF007AFF),
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _SimpleMetricCard(
-                  label: 'Frequency',
-                  value: '${m?.peakFrequencyHz.toStringAsFixed(1) ?? '—'} Hz',
-                  icon: Icons.graphic_eq_rounded,
-                  color: const Color(0xFF5856D6),
-                  isDark: isDark,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -145,67 +232,66 @@ class TremorCharts extends StatelessWidget {
   }
 }
 
-class _SimpleMetricCard extends StatelessWidget {
-  const _SimpleMetricCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    required this.isDark,
-    this.isHighlighted = false,
-  });
+class _TremorGaugeBar extends StatelessWidget {
+  final TremorLevel level;
+  final double magnitude;
 
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final bool isDark;
-  final bool isHighlighted;
+  const _TremorGaugeBar({required this.level, required this.magnitude});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isHighlighted
-            ? color.withValues(alpha: 0.1)
-            : (isDark ? const Color(0xFF1C1C1E) : Colors.white),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isHighlighted
-              ? color.withValues(alpha: 0.3)
-              : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.withValues(alpha: 0.1)),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
+    // Normalize magnitude index (0–3 scale) to 0–1 range for gauge bar
+    final normalized = (magnitude / 3.0).clamp(0.0, 1.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Severity',
+              style: GoogleFonts.manrope(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : Colors.black87,
+            ),
+            Text(
+              '${(normalized * 100).toStringAsFixed(0)}%',
+              style: GoogleFonts.manrope(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: normalized,
+            minHeight: 10,
+            backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              level == TremorLevel.low
+                  ? AppTheme.emerald
+                  : level == TremorLevel.moderate
+                      ? AppTheme.amber
+                      : const Color(0xFFEF4444),
             ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Low', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.emerald)),
+            Text('Moderate', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.amber)),
+            Text('High', style: GoogleFonts.manrope(fontSize: 10, color: const Color(0xFFEF4444))),
+          ],
+        ),
+      ],
     );
   }
 }

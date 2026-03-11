@@ -101,13 +101,30 @@ class DailyBiteSummary {
     required this.avgPaceBpm,
     this.mealBites = const {},
   });
+
+  DailyBiteSummary copyWith({
+    DateTime? date,
+    int? totalBites,
+    double? avgMealDurationMin,
+    double? totalDurationMin,
+    double? avgPaceBpm,
+    Map<String, int>? mealBites,
+  }) {
+    return DailyBiteSummary(
+      date: date ?? this.date,
+      totalBites: totalBites ?? this.totalBites,
+      avgMealDurationMin: avgMealDurationMin ?? this.avgMealDurationMin,
+      totalDurationMin: totalDurationMin ?? this.totalDurationMin,
+      avgPaceBpm: avgPaceBpm ?? this.avgPaceBpm,
+      mealBites: mealBites ?? this.mealBites,
+    );
+  }
 }
 
 @immutable
 class DailyTremorSummary {
   final DateTime date;
   final double avgMagnitude;
-  final double peakMagnitude;
   final double avgFrequencyHz;
   final TremorLevel dominantLevel;
   final Map<String, int>? tremorLevelCounts; // {'low': 10, 'moderate': 5, 'high': 2}
@@ -116,7 +133,6 @@ class DailyTremorSummary {
   const DailyTremorSummary({
     required this.date,
     required this.avgMagnitude,
-    required this.peakMagnitude,
     required this.avgFrequencyHz,
     required this.dominantLevel,
     this.tremorLevelCounts,
@@ -126,17 +142,30 @@ class DailyTremorSummary {
 
 @immutable
 class DeviceHealth {
-  final int batteryPercent; // 0-100
-  final double voltage;
-  final int chargeCycles;
-  final bool sensorsHealthy; // simplified for mock
-
   const DeviceHealth({
     required this.batteryPercent,
     required this.voltage,
     required this.chargeCycles,
     required this.sensorsHealthy,
+    required this.batteryStatus,
+    required this.lastSync,
   });
+
+  final int batteryPercent; // 0-100
+  final double voltage;
+  final int chargeCycles;
+  final bool sensorsHealthy;
+  final String batteryStatus;
+  final DateTime lastSync;
+
+  factory DeviceHealth.empty() => DeviceHealth(
+    batteryPercent: 0,
+    voltage: 0.0,
+    chargeCycles: 0,
+    sensorsHealthy: false,
+    batteryStatus: 'Unknown',
+    lastSync: DateTime.fromMillisecondsSinceEpoch(0),
+  );
 }
 
 @immutable

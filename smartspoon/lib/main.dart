@@ -7,24 +7,24 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:smartspoon/core/core.dart';
-import 'package:smartspoon/core/providers/theme_provider.dart';
-import 'package:smartspoon/core/theme/app_theme.dart';
 import 'package:smartspoon/features/auth/index.dart';
-import 'package:smartspoon/features/onboarding/index.dart';
+import 'package:smartspoon/features/devices/index.dart';
 import 'package:smartspoon/features/insights/index.dart';
-import 'package:smartspoon/features/notifications/domain/services/notification_service.dart';
-import 'package:smartspoon/features/notifications/providers/notification_provider.dart';
+import 'package:smartspoon/features/notifications/index.dart';
+import 'package:smartspoon/features/splash/presentation/screens/splash_screen.dart';
 import 'package:smartspoon/firebase_options.dart';
-import 'package:smartspoon/core/services/scheduled_sync_service.dart';
-import 'package:smartspoon/features/devices/domain/services/mcu_ble_service.dart';
-import 'package:smartspoon/features/devices/domain/services/ble_service.dart';
-import 'package:smartspoon/features/devices/domain/services/tremor_detection_service.dart';
+
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase (required before runApp)
+  // Initialize Firebase. The firebase_core plugin handles duplicate-init by
+  // returning the existing app. On iOS the native SDK may configure [DEFAULT]
+  // from GoogleService-Info.plist before Dart runs; calling initializeApp()
+  // again is safe — the plugin detects the existing app and skips re-config.
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Register background handler immediately after initialization for terminated state handling
@@ -35,12 +35,12 @@ Future<void> main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
+      systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 
-  // Set preferred orientations (optional - remove if you want landscape support)
+  // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -49,24 +49,21 @@ Future<void> main() async {
   // Configure Google Fonts
   GoogleFonts.config.allowRuntimeFetching = true;
 
-  // Set up global error handlers
+  // Set up global error handlers matching mobile-design constraints
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     debugPrint('Flutter Error: ${details.exception}');
-    debugPrint('Stack trace: ${details.stack}');
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('Platform Error: $error');
-    debugPrint('Stack trace: $stack');
     return true; // Handled
   };
 
-  // Configure cache manager for better performance
   _configureCacheManager();
 
-  // Initialize services in background to prevent ANR
-  _initializeServicesInBackground();
+  // Utilize the new setup service to avoid UI blocking (ANR prevention)
+  AppSetupService.initializeBackgroundServices();
 
   runApp(
     MultiProvider(
@@ -79,31 +76,42 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => McuBleService()),
         
         // Tremor Detection Service (Depends on McuBleService)
-        ChangeNotifierProvider(
-          create: (context) => 
-              TremorDetectionService(context.read<McuBleService>()),
+        ChangeNotifierProxyProvider<McuBleService, TremorDetectionService>(
+          create: (context) => TremorDetectionService(Provider.of<McuBleService>(context, listen: false)),
+          update: (_, mcuService, previous) => previous ?? TremorDetectionService(mcuService),
         ),
 
         // 2. Create UnifiedDataService with McuBleService dependency
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider2<McuBleService, TremorDetectionService, UnifiedDataService>(
           create: (context) => UnifiedDataService(
-            mcuService: context.read<McuBleService>(),
-            tremorService: context.read<TremorDetectionService>(),
+            mcuService: Provider.of<McuBleService>(context, listen: false),
+            tremorService: Provider.of<TremorDetectionService>(context, listen: false),
           ),
+          update: (_, mcuService, tremorService, previous) {
+             return previous ?? UnifiedDataService(mcuService: mcuService, tremorService: tremorService);
+          },
         ),
 
-        // 3. Create Repository using UnifiedDataService (Create ONCE, don't listen to updates)
-        Provider<LiveInsightsRepository>(
-          create: (context) =>
-              LiveInsightsRepository(context.read<UnifiedDataService>()),
+        // 3. Create Repository using UnifiedDataService
+        ProxyProvider<UnifiedDataService, LiveInsightsRepository>(
+          create: (context) => LiveInsightsRepository(Provider.of<UnifiedDataService>(context, listen: false)),
+          update: (_, dataService, previous) => previous ?? LiveInsightsRepository(dataService),
           dispose: (_, repo) => repo.dispose(),
         ),
 
-        // 4. Create InsightsController using Repository (Create ONCE)
-        ChangeNotifierProvider<InsightsController>(
-          create: (context) =>
-              InsightsController(context.read<LiveInsightsRepository>())
-                ..init(),
+        // 4. Create InsightsController using Repository
+        // Proxy update hook automatically injects the controller into the service, removing the hacky builder injection.
+        ChangeNotifierProxyProvider2<LiveInsightsRepository, UnifiedDataService, InsightsController>(
+          create: (context) => InsightsController(Provider.of<LiveInsightsRepository>(context, listen: false))..init(),
+          update: (_, repository, dataService, previous) {
+             final controller = previous ?? InsightsController(repository);
+             if (dataService.insightsController == null) {
+                // safely establish the link
+                dataService.insightsController = controller;
+                controller.setUnifiedDataService(dataService);
+             }
+             return controller;
+          },
         ),
 
         // 5. Notification Provider
@@ -111,37 +119,15 @@ Future<void> main() async {
           create: (_) => NotificationProvider()..initialize(),
         ),
       ],
-      child: Builder(
-        builder: (context) {
-          // Inject Controller into DataService after creation (breaks circular dep)
-          final controller = context.read<InsightsController>();
-          final dataService = context.read<UnifiedDataService>();
-
-          if (dataService.insightsController == null) {
-            dataService.insightsController = controller;
-            // NOTE: Do NOT add controller.addListener(dataService.notifyUpdate) —
-            // it creates an infinite loop: InsightsController notifies → 
-            // UnifiedDataService.notifyUpdate → notifyListeners → 
-            // RealLiveTelemetrySource → 4 streams → InsightsController → ∞ loop
-          }
-
-          return const MyApp();
-        },
-      ),
+      child: const MyApp(),
     ),
   );
 }
 
 /// Configure cache manager for optimal performance
 void _configureCacheManager() {
-  // Configure cached network image settings
   CachedNetworkImage.logLevel = CacheManagerLogLevel.warning;
-
-  // You can customize the cache manager here if needed
-  // Example: set custom cache duration, max cache size, etc.
 }
-
-// ThemeProvider class removed - imported from core implementation
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -157,6 +143,7 @@ class MyApp extends StatelessWidget {
           darkTheme: AppTheme.darkTheme(),
           themeMode: themeProvider.themeMode,
           scrollBehavior: AppScrollBehavior(),
+          navigatorKey: navigatorKey,
           home: const SplashScreen(),
           // Performance improvements
           builder: (context, child) {
@@ -187,25 +174,4 @@ class AppScrollBehavior extends MaterialScrollBehavior {
   ) {
     return child;
   }
-}
-
-/// Initialize services in background to prevent blocking main thread and ANR
-void _initializeServicesInBackground() {
-  Future.microtask(() async {
-    try {
-      // Initialize Notification Service
-      await NotificationService().initialize();
-      debugPrint(' NotificationService initialized in background');
-    } catch (e) {
-      debugPrint(' NotificationService initialization failed: $e');
-    }
-
-    try {
-      // Initialize Scheduled Sync (Daily at 11 PM)
-      await ScheduledSyncService.initializeScheduledSync();
-      debugPrint('ScheduledSyncService initialized in background');
-    } catch (e) {
-      debugPrint('ScheduledSyncService initialization failed: $e');
-    }
-  });
 }

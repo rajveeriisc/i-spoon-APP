@@ -506,7 +506,6 @@ export const sendEmailVerification = async (user) => {
     verificationExpires
   );
 
-  console.log(`Verification token for ${user.email}: ${verificationToken}`);
   // Note: Email sending removed - implement your own email service if needed
 };
 

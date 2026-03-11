@@ -11,7 +11,7 @@ class Meal {
   final String? mealType; // Breakfast, Lunch, Dinner, Snack
   final int totalBites;
   final double? avgPaceBpm;
-  final int? tremorIndex;
+  final int? tremorIndex; // 0–3 scale (avg bite magnitude × 3, rounded)
   final double? durationMinutes;
   final double? avgFoodTemp; // Average temperature during meal
   final bool isSynced;

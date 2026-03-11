@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/home/presentation/screens/home_page.dart';
 import 'package:smartspoon/features/auth/index.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,92 +14,128 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
+  late AnimationController _animController;
   late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
-  Timer? _navigationTimer;
 
   @override
   void initState() {
     super.initState();
 
-    _animationController = AnimationController(
+    _animController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(milliseconds: 1800),
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOutBack,
+        parent: _animController,
+        curve: const Interval(0.1, 0.7, curve: Curves.easeOut),
       ),
     );
 
-    _animationController.forward();
+    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+      ),
+    );
 
-    // Bootstrap auth state: if a token exists, fetch profile and navigate to Home
-    // Otherwise, go to Login. Keep a short delay so splash is visible.
+    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Interval(0.1, 0.8, curve: Curves.easeOutCirc),
+      ),
+    );
+
+    _animController.forward();
+
     _bootstrapAuth();
   }
 
   @override
   void dispose() {
-    _navigationTimer?.cancel();
-    _animationController.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
   Future<void> _bootstrapAuth() async {
     debugPrint('🚀 Splash: Starting auth bootstrap...');
-    // Show splash at least ~1.2s
-    final minDelay = Future<void>.delayed(const Duration(milliseconds: 1200));
-    
+    final minDelay = Future<void>.delayed(const Duration(milliseconds: 2400));
+
     bool toHome = false;
-    Map<String, dynamic>? me;
-    
+    Map<String, dynamic>? userMap;
+
+    // ── Step 1: Wait for Firebase to restore its persisted session ─────────────
+    // currentUser is null until Firebase finishes reading from its local cache.
+    // authStateChanges().first waits for that restore — still no network needed.
     try {
-      debugPrint('🚀 Splash: Check token...');
-      final token = await AuthService.getToken();
-      
-      if (token != null) {
-        debugPrint('🚀 Splash: Token found, fetching profile...');
-        // Add timeout to prevent hanging indefinitely
-        final res = await AuthService.getMe().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            debugPrint('⚠️ Splash: Auth timeout!');
-            throw TimeoutException('Auth check timed out');
-          },
-        );
-        
-        me = res;
-        toHome = res['user'] != null;
-        debugPrint('🚀 Splash: Profile loaded: $toHome');
+      final fbService = FirebaseAuthService();
+      final fbUser = await fbService.authStateChanges
+          .first
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+
+      if (fbUser != null) {
+        debugPrint('🚀 Splash: Firebase session found (${fbUser.email})');
+        // Seed a minimal user map from the cached Firebase profile
+        userMap = {
+          'email': fbUser.email,
+          'name': fbUser.displayName,
+          'avatar_url': fbUser.photoURL,
+        };
+        toHome = true;
+
+        // ── Step 2: Enrich with backend profile (best-effort, non-blocking) ────
+        // If backend is reachable we load the full DB profile (id, preferences…).
+        // If it's not reachable we still go home — Firebase session is the source
+        // of truth. We must NOT call logout() on failure here.
+        try {
+          final storedToken = await AuthService.getToken();
+          if (storedToken != null) {
+            final res = await AuthService.getMe().timeout(const Duration(seconds: 6));
+            final backendUser = res['user'] as Map<String, dynamic>?;
+            if (backendUser != null) {
+              userMap = backendUser;
+              debugPrint('🚀 Splash: Backend profile loaded');
+            }
+          } else {
+            // No backend JWT — silently re-exchange the Firebase token for one
+            debugPrint('🚀 Splash: No backend JWT, re-exchanging Firebase token...');
+            final idToken = await fbUser.getIdToken();
+            if (idToken == null) throw Exception('Could not get Firebase ID token');
+            await AuthService.verifyFirebaseToken(idToken: idToken)
+                .timeout(const Duration(seconds: 8));
+            final res = await AuthService.getMe().timeout(const Duration(seconds: 6));
+            final backendUser = res['user'] as Map<String, dynamic>?;
+            if (backendUser != null) userMap = backendUser;
+            debugPrint('🚀 Splash: Token re-exchanged, profile loaded');
+          }
+        } catch (e) {
+          // Backend unreachable / ngrok down / token stale — fine, keep going.
+          debugPrint('⚠️ Splash: Backend check skipped (offline?): $e');
+        }
       } else {
-        debugPrint('🚀 Splash: No token found');
+        debugPrint('🚀 Splash: No Firebase session — going to login');
+        toHome = false;
       }
     } catch (e) {
-      debugPrint('❌ Splash: Auth error: $e');
+      debugPrint('❌ Splash: Firebase check error: $e');
       toHome = false;
     }
-    
+
     await minDelay;
-    
     if (!mounted) return;
-    
-    debugPrint('🚀 Splash: Navigating to ${toHome ? 'Home' : 'Login'}');
-    
+
+    debugPrint('🚀 Splash: → ${toHome ? 'Home' : 'Login'}');
+
     if (toHome) {
       try {
-        final userMap = me!['user'] as Map<String, dynamic>;
-        // Use listen: false to avoid unnecessary rebuilds during navigation
-        Provider.of<UserProvider>(context, listen: false).setFromMap(userMap);
+        if (userMap != null) {
+          Provider.of<UserProvider>(context, listen: false).setFromMap(userMap!);
+        }
       } catch (e) {
-        debugPrint('❌ Splash: UserProvider mismatch: $e');
+        debugPrint('❌ Splash: UserProvider error: $e');
       }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const HomePage()),
@@ -113,52 +149,158 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF6C63FF), Color(0xFF533CE5)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      backgroundColor: isDark ? Colors.black : Theme.of(context).scaffoldBackgroundColor,
+      body: Stack(
+        children: [
+          // Theme-aware background
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.black : null,
+              gradient: isDark
+                  ? null
+                  : AppTheme.backgroundGradient,
+            ),
           ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ScaleTransition(
+          // Emerald ambient glow
+          Positioned(
+            top: -120,
+            left: -80,
+            child: Container(
+              width: 320,
+              height: 320,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppTheme.emerald.withValues(alpha: isDark ? 0.15 : 0.10),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -100,
+            right: -80,
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppTheme.emerald.withValues(alpha: isDark ? 0.10 : 0.07),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          Center(
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: ScaleTransition(
                 scale: _scaleAnimation,
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.20),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.ramen_dining,
-                      color: Colors.white,
-                      size: 80,
-                    ),
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Premium Floating Icon Container
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isDark ? Colors.black : Theme.of(context).colorScheme.surface,
+                          border: Border.all(
+                            color: isDark 
+                                ? Colors.white.withValues(alpha: 0.1) 
+                                : Theme.of(context).dividerColor.withValues(alpha: 0.1),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            // Soft floating shadow
+                            BoxShadow(
+                              color: AppTheme.emerald.withValues(alpha: 0.12),
+                              blurRadius: 40,
+                              spreadRadius: 8,
+                              offset: const Offset(0, 12),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 12,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.restaurant,
+                            color: AppTheme.emerald,
+                            size: 44,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+                      // Clean, modern typography
+                      Text(
+                        'i-Spoon',
+                        style: GoogleFonts.outfit(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                          letterSpacing: -1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Ultra-light subtitle
+                      Text(
+                        'Smart Eating. Better Living.',
+                        style: GoogleFonts.manrope(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white.withValues(alpha: 0.7) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: Text(
-                  'i-Spoon',
-                  style: GoogleFonts.lato(
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          
+          // Subtle Micro-Loading Indicator at the very bottom
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 64),
+              child: FadeTransition(
+                opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
+                  CurvedAnimation(
+                    parent: _animController,
+                    curve: const Interval(0.8, 1.0, curve: Curves.easeIn),
+                  ),
+                ),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.emerald.withValues(alpha: 0.8)),
+                    backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

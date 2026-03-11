@@ -1,231 +1,104 @@
 import * as NotificationModel from "../models/notificationModel.js";
+import { pool } from "../config/db.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import logger from "../utils/logger.js";
+import { AppError } from "../utils/errors.js";
 
 /**
- * Notification Preferences Controller - Handles notification settings API
+ * Notification Controller - Handles notification settings API
  */
 
-// GET /api/notifications/preferences - Get user's notification preferences
-export const getPreferences = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const preferences = await NotificationModel.getUserPreferences(userId);
+// GET /api/notifications/preferences
+export const getPreferences = asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const result = await pool.query(
+        `SELECT notifications_enabled FROM users WHERE id = $1`,
+        [userId]
+    );
 
-        if (!preferences) {
-            return res.status(404).json({
-                success: false,
-                message: "Preferences not found"
-            });
-        }
+    res.json({
+        success: true,
+        preferences: {
+            enabled: result.rows[0]?.notifications_enabled ?? true,
+        },
+    });
+});
 
-        // Don't send FCM token to client
-        const { fcm_token, ...safePreferences } = preferences;
+// PUT /api/notifications/preferences
+export const updatePreferences = asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { enabled } = req.body;
 
-        res.json({
-            success: true,
-            preferences: safePreferences
-        });
-    } catch (error) {
-        console.error("Get preferences error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch preferences"
-        });
+    if (typeof enabled !== 'boolean') {
+        throw new AppError('enabled must be a boolean', 400);
     }
-};
 
-// PUT /api/notifications/preferences - Update notification preferences
-export const updatePreferences = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const updates = req.body;
+    await pool.query(
+        `UPDATE users SET notifications_enabled = $1 WHERE id = $2`,
+        [enabled, userId]
+    );
 
-        // Don't allow direct FCM token updates through this endpoint
-        delete updates.fcm_token;
+    logger.info('Notification preferences updated', { requestId: req.id, userId, enabled });
+    res.json({
+        success: true,
+        preferences: { enabled },
+        message: 'Preferences updated successfully',
+    });
+});
 
-        const preferences = await NotificationModel.updateUserPreferences(userId, updates);
+// POST /api/notifications/fcm-token
+export const registerFCMToken = asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const { fcm_token } = req.body;
 
-        if (!preferences) {
-            return res.status(404).json({
-                success: false,
-                message: "Preferences not found"
-            });
-        }
-
-        // Don't send FCM token to client
-        const { fcm_token, ...safePreferences } = preferences;
-
-        res.json({
-            success: true,
-            preferences: safePreferences,
-            message: "Preferences updated successfully"
-        });
-    } catch (error) {
-        console.error("Update preferences error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to update preferences"
-        });
+    if (!fcm_token || typeof fcm_token !== 'string' || fcm_token.length < 10) {
+        throw new AppError('A valid FCM token is required', 400);
     }
-};
 
-// POST /api/notifications/fcm-token - Register FCM token
-export const registerFCMToken = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { fcm_token } = req.body;
+    await NotificationModel.addFCMToken(userId, fcm_token);
 
-        if (!fcm_token) {
-            return res.status(400).json({
-                success: false,
-                message: "FCM token is required"
-            });
-        }
+    logger.info('FCM token registered', { requestId: req.id, userId });
+    res.json({ success: true, message: 'FCM token registered successfully' });
+});
 
-        await NotificationModel.updateUserPreferences(userId, { fcm_token });
+// GET /api/notifications/history
+export const getHistory = asyncHandler(async (req, res) => {
+    const userId = req.user.id;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const offset = Math.min(Math.max(parseInt(req.query.offset, 10) || 0, 0), 10000);
 
-        res.json({
-            success: true,
-            message: "FCM token registered successfully"
-        });
-    } catch (error) {
-        console.error("Register FCM token error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to register FCM token"
-        });
-    }
-};
+    const history = await NotificationModel.getUserNotificationHistory(userId, limit, offset);
 
-// GET /api/notifications/history - Get notification history
-export const getHistory = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { limit = 50, offset = 0 } = req.query;
+    res.json({
+        success: true,
+        notifications: history,
+        pagination: { limit, offset, returned: history.length },
+    });
+});
 
-        const history = await NotificationModel.getUserNotificationHistory(
-            userId,
-            parseInt(limit),
-            parseInt(offset)
-        );
+// POST /api/notifications/:id/opened
+export const markOpened = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
 
-        res.json({
-            success: true,
-            notifications: history,
-            pagination: {
-                limit: parseInt(limit),
-                offset: parseInt(offset),
-                total: history.length
-            }
-        });
-    } catch (error) {
-        console.error("Get history error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch notification history"
-        });
-    }
-};
+    const notification = await NotificationModel.markNotificationRead(id, userId);
+    if (!notification) throw new AppError('Notification not found', 404);
 
-// POST /api/notifications/:id/opened - Mark notification as opened
-export const markOpened = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.user.id;
+    res.json({ success: true, notification });
+});
 
-        const notification = await NotificationModel.markNotificationOpened(id);
+// POST /api/notifications/:id/action
+export const markActionTaken = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
 
-        if (!notification) {
-            return res.status(404).json({
-                success: false,
-                message: "Notification not found"
-            });
-        }
+    const notification = await NotificationModel.markNotificationRead(id, userId);
+    if (!notification) throw new AppError('Notification not found', 404);
 
-        // Verify ownership
-        if (notification.user_id !== userId) {
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized"
-            });
-        }
+    res.json({ success: true, notification });
+});
 
-        res.json({
-            success: true,
-            notification
-        });
-    } catch (error) {
-        console.error("Mark opened error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to mark notification as opened"
-        });
-    }
-};
-
-// POST /api/notifications/:id/action - Mark notification action taken
-export const markActionTaken = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.user.id;
-
-        const notification = await NotificationModel.markNotificationActionTaken(id);
-
-        if (!notification) {
-            return res.status(404).json({
-                success: false,
-                message: "Notification not found"
-            });
-        }
-
-        // Verify ownership
-        if (notification.user_id !== userId) {
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized"
-            });
-        }
-
-        res.json({
-            success: true,
-            notification
-        });
-    } catch (error) {
-        console.error("Mark action taken error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to mark action taken"
-        });
-    }
-};
-
-// GET /api/notifications/templates - Get all available notification types (for settings UI)
-export const getTemplates = async (req, res) => {
-    try {
-        const templates = await NotificationModel.getAllTemplates();
-
-        // Group by category for frontend display
-        const grouped = templates.reduce((acc, template) => {
-            if (!acc[template.category]) {
-                acc[template.category] = [];
-            }
-            acc[template.category].push({
-                type: template.type,
-                title: template.title_template,
-                description: template.body_template,
-                priority: template.priority
-            });
-            return acc;
-        }, {});
-
-        res.json({
-            success: true,
-            templates: grouped
-        });
-    } catch (error) {
-        console.error("Get templates error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch notification templates"
-        });
-    }
-};
+// GET /api/notifications/templates
+export const getTemplates = asyncHandler(async (req, res) => {
+    res.json({ success: true, templates: {} });
+});

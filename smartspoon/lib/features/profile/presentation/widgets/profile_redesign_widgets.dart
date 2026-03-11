@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/premium_widgets.dart';
 
 // --- Constants & Theme ---
-const Color kProfilePrimary = Color(0xFF00A896);
-const Color kProfileGradientEnd = Color(0xFF028174);
-const Color kProfileBackground = Color(0xFFF5F7FA); // Light mode background
-const Color kProfileCardBg = Colors.white;
-const double kPadding = 16.0;
-const double kBorderRadius = 16.0;
+// We use AppTheme constants directly now, but keep aliases if needed for compatibility
+const double kPadding = 20.0;
+const double kBorderRadius = 24.0;
 
-// Typography Helper
-TextStyle get kTitleStyle => GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87);
-TextStyle get kSubtitleStyle => GoogleFonts.outfit(fontSize: 13, color: Colors.grey.shade600);
-TextStyle get kBodyStyle => GoogleFonts.outfit(fontSize: 15, color: Colors.black87);
+// Typography Helper - Mapped to Manrope/Premium
+TextStyle get kTitleStyle => GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.bold);
+TextStyle get kSubtitleStyle => GoogleFonts.manrope(fontSize: 13);
+TextStyle get kBodyStyle => GoogleFonts.manrope(fontSize: 15);
 
 // --- 1. ProfileHeader ---
 class ProfileHeader extends StatelessWidget {
@@ -32,84 +31,70 @@ class ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 240,
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [kProfilePrimary, kProfileGradientEnd],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(30),
-          bottomRight: Radius.circular(30),
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
+      padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+      child: Column(
         children: [
-          Positioned(
-            top: 60, // Adjust based on SafeArea needs in parent
-            child: Column(
-              children: [
-                // Avatar with 4px white border
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 4),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5)),
-                    ],
-                  ),
-                  child: CircleAvatar(
-                    backgroundImage: NetworkImage(avatarUrl),
-                    backgroundColor: Colors.grey.shade200,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  name,
-                  style: GoogleFonts.outfit(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  email,
-                  style: GoogleFonts.outfit(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 40,
-            right: 16,
-            child: GestureDetector(
-              onTap: onEdit,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          Stack(
+            children: [
+              // Avatar
+              Container(
+                width: 110,
+                height: 110,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  'Edit',
-                  style: GoogleFonts.outfit(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.emerald, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.emerald.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                  image: DecorationImage(
+                    image: NetworkImage(avatarUrl),
+                    fit: BoxFit.cover,
                   ),
                 ),
               ),
+              // Edit Button (Small icon badge)
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: onEdit,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppTheme.emerald,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 3),
+                    ),
+                    child: const Icon(Icons.edit, color: Colors.white, size: 18),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            name,
+            style: GoogleFonts.manrope(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.white 
+                  : Theme.of(context).colorScheme.onSurface,
             ),
-          )
+          ),
+          const SizedBox(height: 4),
+          Text(
+            email,
+            style: GoogleFonts.manrope(
+              fontSize: 14,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
         ],
       ),
     );
@@ -117,6 +102,7 @@ class ProfileHeader extends StatelessWidget {
 }
 
 // --- 2. ProfileCard (Container) ---
+// Replaced with PremiumGlassCard wrapper
 class ProfileCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -126,22 +112,14 @@ class ProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: width,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: padding ?? const EdgeInsets.all(kPadding),
-      decoration: BoxDecoration(
-        color: kProfileCardBg,
-        borderRadius: BorderRadius.circular(kBorderRadius),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05), // 2dp-ish subtle shadow
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+      child: PremiumGlassCard(
+        child: Padding(
+          padding: padding ?? const EdgeInsets.all(kPadding),
+          child: child,
+        ),
       ),
-      child: child,
     );
   }
 }
@@ -167,28 +145,40 @@ class StatsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: ProfileCard(
-        width: 140, // Fixed width
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(icon, color: kProfilePrimary, size: 24),
-                Icon(
-                  isUp ? Icons.arrow_upward : Icons.arrow_downward, 
-                  size: 14, 
-                  color: isUp ? Colors.green : Colors.red,
-                ),
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              PremiumIconBox(icon: icon, color: AppTheme.emerald, size: 20),
+              if (isUp) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_upward, size: 14, color: AppTheme.emerald),
               ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: GoogleFonts.manrope(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.white 
+                  : Theme.of(context).colorScheme.onSurface,
             ),
-            const SizedBox(height: 12),
-            Text(value, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
-            Text(label, style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey.shade500)),
-          ],
-        ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -203,19 +193,27 @@ class ProfileProgressBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 8,
+      height: 6,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: kProfilePrimary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
+        color: AppTheme.border,
+        borderRadius: BorderRadius.circular(3),
       ),
       child: FractionallySizedBox(
         alignment: Alignment.centerLeft,
         widthFactor: progress.clamp(0.0, 1.0),
         child: Container(
           decoration: BoxDecoration(
-            color: kProfilePrimary,
-            borderRadius: BorderRadius.circular(4),
+            gradient: LinearGradient(
+              colors: [AppTheme.emerald, const Color(0xFF4338CA)],
+            ),
+            borderRadius: BorderRadius.circular(3),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.emerald.withValues(alpha: 0.5),
+                blurRadius: 6,
+              )
+            ],
           ),
         ),
       ),
@@ -230,6 +228,7 @@ class SettingsRow extends StatelessWidget {
   final Widget? trailing; // Switch or Chevron often
   final VoidCallback? onTap;
   final bool isDestructive;
+  final bool showBorder;
 
   const SettingsRow({
     super.key,
@@ -241,38 +240,58 @@ class SettingsRow extends StatelessWidget {
     this.showBorder = true,
   });
 
-  final bool showBorder;
-
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: showBorder ? Border(bottom: BorderSide(color: Colors.grey.shade100, width: 1)) : null,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 24, // Icon Container Width
-              alignment: Alignment.centerLeft,
-              child: Icon(icon, size: 20, color: isDestructive ? Colors.red : Colors.grey.shade700),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: GoogleFonts.outfit(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: isDestructive ? Colors.red : Colors.black87,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            border: showBorder 
+                ? Border(bottom: BorderSide(color: AppTheme.border, width: 1)) 
+                : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: isDestructive 
+                      ? AppTheme.rose.withValues(alpha: 0.10) 
+                      : AppTheme.emerald.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  color: isDestructive ? AppTheme.rose : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
-            ),
-            if (trailing != null) trailing! 
-            else Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.manrope(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDestructive 
+                        ? AppTheme.rose 
+                        : (Theme.of(context).brightness == Brightness.dark 
+                            ? Colors.white 
+                            : Theme.of(context).colorScheme.onSurface),
+                  ),
+                ),
+              ),
+              if (trailing != null) 
+                trailing! 
+              else 
+                Icon(Icons.chevron_right, size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+            ],
+          ),
         ),
       ),
     );

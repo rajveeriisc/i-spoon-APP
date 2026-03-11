@@ -1,110 +1,80 @@
 import { pool } from "../config/db.js";
 
 /**
- * Bite Model - Handles granular bite events with tremor data
+ * Bite Model — bites table
+ * Mirrors local SQLite bites table exactly.
+ * Columns: id, meal_uuid, timestamp, sequence_number,
+ *          tremor_magnitude, tremor_frequency, food_temp_c,
+ *          is_valid, is_synced, created_at
  */
 
-// Get bites for a specific meal
-export const getBitesForMeal = async (mealId) => {
-    const res = await pool.query(
-        `SELECT 
-      id, meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz,
-      is_valid, sequence_number, created_at
-    FROM bites
-    WHERE meal_id = $1
-    ORDER BY sequence_number ASC`,
-        [mealId]
-    );
+// ─── READ ─────────────────────────────────────────────────────────────────────
 
+export const getBitesForMeal = async (mealUuid) => {
+    const res = await pool.query(
+        `SELECT id, meal_uuid, timestamp, sequence_number,
+                tremor_magnitude, tremor_frequency, food_temp_c,
+                is_valid, created_at
+         FROM bites
+         WHERE meal_uuid = $1
+         ORDER BY timestamp ASC`,
+        [mealUuid]
+    );
     return res.rows;
 };
 
-// Create a new bite event
-export const createBite = async (biteData) => {
-    const {
-        meal_id,
-        timestamp,
-        tremor_magnitude_rad_s = null,
-        tremor_frequency_hz = null,
-        is_valid = true,
-        sequence_number
-    } = biteData;
+// ─── WRITE ────────────────────────────────────────────────────────────────────
 
-    const res = await pool.query(
-        `INSERT INTO bites (
-      meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz,
-      is_valid, sequence_number
-    ) VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING *`,
-        [meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz, is_valid, sequence_number]
-    );
+/**
+ * Batch-upsert bites for a meal inside a single DB transaction.
+ * All inserts succeed or the whole batch is rolled back — no partial sync.
+ * Uses (meal_uuid, sequence_number) as conflict key so re-syncing is safe.
+ *
+ * @param {string} mealUuid
+ * @param {Array}  bites
+ * @returns {Array} rows that were actually inserted (skips conflicts)
+ */
+export const upsertBites = async (mealUuid, bites) => {
+    if (!bites || bites.length === 0) return [];
 
-    return res.rows[0];
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const inserted = [];
+        for (const bite of bites) {
+            const {
+                timestamp,
+                sequence_number  = null,
+                tremor_magnitude = null,
+                tremor_frequency = null,
+                food_temp_c      = null,
+                is_valid         = true,
+            } = bite;
+
+            const res = await client.query(
+                `INSERT INTO bites
+                     (meal_uuid, timestamp, sequence_number,
+                      tremor_magnitude, tremor_frequency, food_temp_c, is_valid)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT DO NOTHING
+                 RETURNING *`,
+                [mealUuid, timestamp, sequence_number,
+                 tremor_magnitude, tremor_frequency, food_temp_c, is_valid]
+            );
+            if (res.rows.length > 0) inserted.push(res.rows[0]);
+        }
+
+        await client.query('COMMIT');
+        return inserted;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
-// Bulk insert bites (for efficient batch processing)
-export const createBitesBatch = async (bites) => {
-    if (bites.length === 0) return [];
-
-    const values = [];
-    const placeholders = [];
-
-    bites.forEach((bite, index) => {
-        const offset = index * 6;
-        placeholders.push(
-            `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`
-        );
-        values.push(
-            bite.meal_id,
-            bite.timestamp,
-            bite.tremor_magnitude_rad_s || null,
-            bite.tremor_frequency_hz || null,
-            bite.is_valid !== undefined ? bite.is_valid : true,
-            bite.sequence_number
-        );
-    });
-
-    const query = `
-    INSERT INTO bites (
-      meal_id, timestamp, tremor_magnitude_rad_s, tremor_frequency_hz,
-      is_valid, sequence_number
-    ) VALUES ${placeholders.join(', ')}
-    RETURNING *
-  `;
-
-    const res = await pool.query(query, values);
-    return res.rows;
-};
-
-// Get tremor analysis for a meal
-export const getTremorAnalysisForMeal = async (mealId) => {
-    const res = await pool.query(
-        `SELECT 
-      AVG(tremor_magnitude_rad_s) as avg_magnitude,
-      MAX(tremor_magnitude_rad_s) as max_magnitude,
-      MIN(tremor_magnitude_rad_s) as min_magnitude,
-      AVG(tremor_frequency_hz) as avg_frequency,
-      COUNT(*) FILTER (WHERE tremor_magnitude_rad_s > 0.5) as high_tremor_count,
-      COUNT(*) as total_bites
-    FROM bites
-    WHERE meal_id = $1 AND is_valid = true`,
-        [mealId]
-    );
-
-    return res.rows[0];
-};
-
-// Get bite count for a meal
-export const getBiteCount = async (mealId) => {
-    const res = await pool.query(
-        `SELECT COUNT(*) as count FROM bites WHERE meal_id = $1 AND is_valid = true`,
-        [mealId]
-    );
-
-    return parseInt(res.rows[0].count);
-};
-
-// Delete bites for a meal (cascade will handle this, but explicit method for clarity)
-export const deleteBitesForMeal = async (mealId) => {
-    await pool.query('DELETE FROM bites WHERE meal_id = $1', [mealId]);
+export const deleteBitesForMeal = async (mealUuid) => {
+    await pool.query('DELETE FROM bites WHERE meal_uuid = $1', [mealUuid]);
 };
